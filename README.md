@@ -1,16 +1,16 @@
 # `da728x`
-An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA72782 from Renesas.
+An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA7282 from Renesas.
 
 ## Supported ICs
 - DA7280
 - DA7281
-- DA8282
+- DA7282
 
 ## What works
 - CHIP_REV verification
 
 ## Features
-// TODO
+- `debug` - Enable debug logging with the `defmt` crate
 
 # Usage
 // TODO
