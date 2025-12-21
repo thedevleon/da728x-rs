@@ -449,14 +449,19 @@ where
 
     /// Upload a constant effect level for DRO mode
     ///
-    /// This sets the drive level for Direct Register Override (DRO) mode.
+    /// This validates the drive level for Direct Register Override (DRO) mode.
     /// The level should be 0-255 (or 0-127 if acceleration is enabled).
+    ///
+    /// Note: The actual level is set using `set_dro_level()` when the device is active.
+    /// This method is primarily for validation and API consistency.
     ///
     /// # Arguments
     /// * `level` - The drive level (0-255 or 0-127 with acceleration)
     ///
     /// # Errors
-    /// Returns an error if device is currently active
+    /// Returns an error if:
+    /// - Device is currently active
+    /// - Level is out of range
     pub async fn upload_constant_effect(&mut self, level: u8) -> Result<(), Error> {
         // Check device is not active
         if self.active {
@@ -469,8 +474,8 @@ where
             return Err(Error::InvalidParameter);
         }
 
-        // Store the level for later use when activating
-        // The level will be written to TOP_CTL2 when activate() is called
+        // For DRO mode, the level is set directly via set_dro_level() when needed
+        // This method validates the level is acceptable
         Ok(())
     }
 

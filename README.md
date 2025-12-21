@@ -102,7 +102,7 @@ async fn example() -> Result<(), da728x::Error> {
     let mut driver = DA728x::new(i2c, 0x4A, Variant::DA7280, config).await?;
     
     // Upload and play the pattern
-    driver.upload_waveform(&pattern[..20])?;  // Upload first 20 bytes
+    driver.upload_waveform(&pattern[..20]).await?;  // Upload first 20 bytes
     driver.set_ps_sequence(0, 1).await?;
     driver.activate(OperationMode::RTWM).await?;
     
