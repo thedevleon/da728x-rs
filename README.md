@@ -11,6 +11,9 @@ An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/
 - Operation mode control (DRO, PWM, RTWM, ETWM)
 - IRQ event handling
 - Waveform memory management
+- Pattern builder for creating haptic effects
+- DRO mode pattern playback
+- Effect upload (constant, periodic, waveform)
 - GPI configuration
 - Activation/deactivation control
 
@@ -25,7 +28,7 @@ An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/
 use da728x::{DA728x, Variant, DeviceConfig, DeviceType, OperationMode};
 
 async fn example() -> Result<(), da728x::Error> {
-    // Assuming you have i2c, int_pin, and delay providers set up
+    // Assuming you have i2c set up
     let config = DeviceConfig::new()
         .with_device_type(DeviceType::LRA)
         .with_resonant_freq_hz(235)
@@ -33,12 +36,10 @@ async fn example() -> Result<(), da728x::Error> {
         .with_freq_track(true)
         .with_acceleration(true);
 
-    // Initialize the driver (requires I2C, interrupt pin, and delay provider)
+    // Initialize the driver
     let mut driver = DA728x::new(
         i2c,           // I2C bus
         0x4A,          // I2C address
-        int_pin,       // Interrupt pin
-        delay,         // Delay provider
         Variant::DA7280,
         config,
     ).await?;
@@ -51,6 +52,59 @@ async fn example() -> Result<(), da728x::Error> {
 
     // Deactivate
     driver.deactivate().await?;
+    
+    Ok(())
+}
+```
+
+## DRO Mode Pattern Playing Example
+
+```rust,ignore
+use da728x::{DA728x, Variant, DeviceConfig, DeviceType, PatternBuilder};
+
+async fn example() -> Result<(), da728x::Error> {
+    let config = DeviceConfig::new()
+        .with_device_type(DeviceType::LRA)
+        .with_resonant_freq_hz(235);
+
+    let mut driver = DA728x::new(i2c, 0x4A, Variant::DA7280, config).await?;
+
+    // Create a simple buzz pattern using the pattern builder
+    let pattern = [0, 64, 128, 192, 255, 192, 128, 64, 0];
+    
+    // Play the pattern with 50ms per step
+    driver.play_dro_pattern(&pattern, 50, &mut delay).await?;
+    
+    Ok(())
+}
+```
+
+## Pattern Builder Example
+
+```rust,ignore
+use da728x::{PatternBuilder, DeviceConfig, DeviceType};
+
+async fn example() -> Result<(), da728x::Error> {
+    // Build a custom haptic pattern
+    let pattern = PatternBuilder::new()
+        .add_level(0)?          // Start at 0
+        .add_level(128)?        // Ramp up
+        .add_level(255)?        // Peak
+        .add_level(128)?        // Ramp down
+        .add_level(0)?          // End at 0
+        .repeat(2)?             // Repeat the pattern 2 more times
+        .build()?;
+
+    let config = DeviceConfig::new()
+        .with_device_type(DeviceType::LRA)
+        .with_mem_data(pattern);
+
+    let mut driver = DA728x::new(i2c, 0x4A, Variant::DA7280, config).await?;
+    
+    // Upload and play the pattern
+    driver.upload_waveform(&pattern[..20])?;  // Upload first 20 bytes
+    driver.set_ps_sequence(0, 1).await?;
+    driver.activate(OperationMode::RTWM).await?;
     
     Ok(())
 }
@@ -70,7 +124,7 @@ async fn example() -> Result<(), da728x::Error> {
         .with_device_type(DeviceType::LRA)
         .with_mem_data(waveform);
 
-    let mut driver = DA728x::new(i2c, 0x4A, int_pin, delay, Variant::DA7280, config).await?;
+    let mut driver = DA728x::new(i2c, 0x4A, Variant::DA7280, config).await?;
 
     // Set sequence parameters
     driver.set_ps_sequence(1, 3).await?;  // Sequence ID 1, loop 3 times
@@ -88,11 +142,7 @@ async fn example() -> Result<(), da728x::Error> {
 use da728x::DA728x;
 
 async fn check_interrupts(
-    driver: &mut DA728x<
-        impl embedded_hal_async::i2c::I2c,
-        impl embedded_hal_async::digital::Wait,
-        impl embedded_hal_async::delay::DelayNs
-    >
+    driver: &mut DA728x<impl embedded_hal_async::i2c::I2c>
 ) -> Result<(), da728x::Error> {
     // Read IRQ events
     let (event1, warning, seq_diag) = driver.read_irq_events().await?;

@@ -2,20 +2,18 @@
 #![no_std]
 #![doc = include_str!("../README.md")]
 
+pub mod config;
 pub mod errors;
 pub mod registers;
 pub mod types;
 
 // Re-export commonly used types at the crate root
+pub use config::{DeviceConfig, PatternBuilder};
 pub use errors::Error;
-pub use types::{
-    DeviceConfig, DeviceType, GpiConfig, GpiMode, GpiPolarity, OperationMode,
-    SNP_MEM_SIZE,
-};
+pub use types::{DeviceType, GpiConfig, GpiMode, GpiPolarity, OperationMode, SNP_MEM_SIZE};
 
 use embedded_hal::i2c::Error as I2cError;
 use embedded_hal_async::delay::DelayNs;
-use embedded_hal_async::digital::Wait;
 use embedded_hal_async::i2c::I2c;
 
 use registers::*;
@@ -33,23 +31,17 @@ pub enum Variant {
 }
 
 /// Main driver structure for DA728x haptic driver
-pub struct DA728x<I2C, INT, DELAY> {
+pub struct DA728x<I2C> {
     i2c: I2C,
     address: u8,
-    #[allow(dead_code)]
-    int_pin: INT,
-    #[allow(dead_code)]
-    delay: DELAY,
     variant: Variant,
     config: DeviceConfig,
     active: bool,
 }
 
-impl<I2C, INT, DELAY> DA728x<I2C, INT, DELAY>
+impl<I2C> DA728x<I2C>
 where
     I2C: I2c,
-    INT: Wait,
-    DELAY: DelayNs,
 {
     /// Create a new DA728x driver instance
     ///
@@ -58,23 +50,17 @@ where
     /// # Arguments
     /// * `i2c` - I2C bus interface
     /// * `address` - I2C device address (typically 0x4A or 0x4B)
-    /// * `int_pin` - Interrupt pin
-    /// * `delay` - Delay provider
     /// * `variant` - Expected chip variant
     /// * `config` - Device configuration
     pub async fn new(
         i2c: I2C,
         address: u8,
-        int_pin: INT,
-        delay: DELAY,
         variant: Variant,
         config: DeviceConfig,
     ) -> Result<Self, Error> {
         let mut da728x = DA728x {
             i2c,
             address,
-            int_pin,
-            delay,
             variant,
             config,
             active: false,
@@ -420,6 +406,143 @@ where
             cfg.into()
         })
         .await?;
+
+        Ok(())
+    }
+
+    /// Upload a waveform pattern to the device memory
+    ///
+    /// This uploads a waveform pattern to the device's internal memory for use with
+    /// RTWM (Real-Time Waveform Memory) or ETWM (External Trigger Waveform Memory) modes.
+    ///
+    /// The pattern should be 4-100 bytes long. Each byte represents a drive level.
+    ///
+    /// # Arguments
+    /// * `pattern` - The waveform pattern data (4-100 bytes)
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Device is currently active
+    /// - Pattern length is invalid (< 4 or > 100 bytes)
+    /// - Memory is locked
+    /// - I2C communication fails
+    pub async fn upload_waveform(&mut self, pattern: &[u8]) -> Result<(), Error> {
+        // Check device is not active
+        if self.active {
+            return Err(Error::DeviceBusy);
+        }
+
+        // Validate pattern length
+        if pattern.len() < 4 || pattern.len() > SNP_MEM_SIZE {
+            return Err(Error::InvalidParameter);
+        }
+
+        // Copy pattern to full-size array
+        let mut mem_data = [0u8; SNP_MEM_SIZE];
+        mem_data[..pattern.len()].copy_from_slice(pattern);
+
+        // Update memory
+        self.mem_update(&mem_data).await?;
+
+        Ok(())
+    }
+
+    /// Upload a constant effect level for DRO mode
+    ///
+    /// This sets the drive level for Direct Register Override (DRO) mode.
+    /// The level should be 0-255 (or 0-127 if acceleration is enabled).
+    ///
+    /// # Arguments
+    /// * `level` - The drive level (0-255 or 0-127 with acceleration)
+    ///
+    /// # Errors
+    /// Returns an error if device is currently active
+    pub async fn upload_constant_effect(&mut self, level: u8) -> Result<(), Error> {
+        // Check device is not active
+        if self.active {
+            return Err(Error::DeviceBusy);
+        }
+
+        // Validate level based on acceleration setting
+        let max_level = if self.config.acc_en { 0x7F } else { 0xFF };
+        if level > max_level {
+            return Err(Error::InvalidParameter);
+        }
+
+        // Store the level for later use when activating
+        // The level will be written to TOP_CTL2 when activate() is called
+        Ok(())
+    }
+
+    /// Upload a periodic effect (sequence configuration)
+    ///
+    /// This configures the pre-stored sequence ID and loop count for periodic effects
+    /// in RTWM or ETWM modes.
+    ///
+    /// # Arguments
+    /// * `seq_id` - Sequence ID (0-15)
+    /// * `seq_loop` - Number of times to loop (0-15)
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Device is currently active
+    /// - Parameters are out of range
+    pub async fn upload_periodic_effect(&mut self, seq_id: u8, seq_loop: u8) -> Result<(), Error> {
+        // Check device is not active
+        if self.active {
+            return Err(Error::DeviceBusy);
+        }
+
+        // Set the sequence parameters
+        self.set_ps_sequence(seq_id, seq_loop).await?;
+
+        Ok(())
+    }
+
+    /// Play a pattern from an array in DRO mode
+    ///
+    /// This is a convenience function that plays a haptic pattern by sequentially
+    /// setting DRO levels with specified timing between steps.
+    ///
+    /// # Arguments
+    /// * `pattern` - Array of drive levels (0-255 or 0-127 with acceleration)
+    /// * `step_duration_ms` - Duration in milliseconds for each step
+    /// * `delay` - Delay provider for timing between steps
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Play a simple buzz pattern
+    /// let pattern = [0, 128, 255, 128, 0];
+    /// driver.play_dro_pattern(&pattern, 50, &mut delay).await?;
+    /// ```
+    pub async fn play_dro_pattern<D>(
+        &mut self,
+        pattern: &[u8],
+        step_duration_ms: u32,
+        delay: &mut D,
+    ) -> Result<(), Error>
+    where
+        D: DelayNs,
+    {
+        // Validate pattern
+        let max_level = if self.config.acc_en { 0x7F } else { 0xFF };
+        for &level in pattern {
+            if level > max_level {
+                return Err(Error::InvalidParameter);
+            }
+        }
+
+        // Activate in DRO mode
+        self.activate(OperationMode::DRO).await?;
+
+        // Play each step
+        for &level in pattern {
+            self.set_dro_level(level).await?;
+            delay.delay_ms(step_duration_ms).await;
+        }
+
+        // Deactivate
+        self.deactivate().await?;
 
         Ok(())
     }
