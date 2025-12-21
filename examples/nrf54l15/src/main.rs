@@ -8,8 +8,7 @@ use embassy_nrf::{bind_interrupts, peripherals};
 use static_cell::ConstStaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-const ADDRESS: u8 = 0x4A;
-const WHOAMI: u8 = 0x00;
+use da728x::DA728x;
 
 bind_interrupts!(struct Irqs {
     SERIAL20 => twim::InterruptHandler<peripherals::SERIAL20>;
@@ -21,13 +20,13 @@ async fn main(_spawner: Spawner) {
     info!("Initializing TWI...");
     let config = twim::Config::default();
     static RAM_BUFFER: ConstStaticCell<[u8; 16]> = ConstStaticCell::new([0; 16]);
-    let mut twi = Twim::new(p.SERIAL20, Irqs, p.P1_10, p.P1_11, config, RAM_BUFFER.take());
+    let twi = Twim::new(p.SERIAL20, Irqs, p.P1_10, p.P1_11, config, RAM_BUFFER.take());
 
-    info!("Reading...");
+    info!("Setting up haptics IC...");
+    let mut haptics = DA728x::new(twi, 0x4A, da728x::Variant::DA7280).await.unwrap();
+    
+    info!("Haptics IC setup successfully.");
 
-    let mut data = [0u8; 1];
-    match twi.write_read(ADDRESS, &[WHOAMI], &mut data).await {
-        Ok(()) => info!("Whoami: {:X}", data[0]),
-        Err(e) => error!("I2c Error: {:?}", e),
-    }
+    let rev = haptics.get_chip_rev().await.unwrap();
+    info!("Chip ID: {:x} {:x}", rev.CHIP_REV_MAJOR(), rev.CHIP_REV_MINOR());
 }
