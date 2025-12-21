@@ -5,20 +5,15 @@
 pub mod errors;
 pub mod registers;
 
-use embedded_hal::digital::Error as DigitalError;
-use embedded_hal::digital::InputPin;
-use embedded_hal_async::delay::DelayNs;
-use embedded_hal_async::digital::Wait;
 use embedded_hal_async::i2c::Error as I2cError;
 use embedded_hal_async::i2c::I2c;
 
+#[cfg(feature = "debug")]
+use defmt::{debug, info};
+
 use errors::Error;
 use registers::Register;
-
-#[cfg(feature = "debug")]
-use log::{debug, info};
-
-use crate::registers::CHIP_REV;
+use registers::CHIP_REV;
 
 pub enum Variant {
     DA7280 = 0xBA,
@@ -26,41 +21,34 @@ pub enum Variant {
     DA7282 = 0xDA,
 }
 
-pub struct DA728x<I2C, INT, DELAY> {
+pub struct DA728x<I2C> {
     i2c: I2C,
     address: u8,
-    int_pin: INT,
-    delay: DELAY,
     variant: Variant,
 }
 
-impl<I2C, INT, DELAY> DA728x<I2C, INT, DELAY>
+impl<I2C> DA728x<I2C>
 where
     I2C: I2c,
-    INT: Wait,
-    DELAY: DelayNs,
 {
     pub async fn new(
-        mut i2c: I2C,
+        i2c: I2C,
         address: u8,
-        mut int_pin: INT,
-        delay: DELAY,
         variant: Variant,
     ) -> Result<Self, Error>
     where
         I2C: I2c,
-        INT: Wait,
-        DELAY: DelayNs,
     {
         let mut da728x = DA728x {
             i2c,
             address,
-            int_pin,
-            delay,
             variant,
         };
 
         let chip_rev = da728x.get_chip_rev().await?;
+
+        #[cfg(feature = "debug")]
+        debug!("CHIP_REV = {:x} {:x}", chip_rev.CHIP_REV_MAJOR(), chip_rev.CHIP_REV_MINOR());
 
         match da728x.variant {
             Variant::DA7280 => {
@@ -101,7 +89,7 @@ where
 
     async fn write_register(&mut self, register: Register, data: u8) -> Result<(), Error> {
         self.i2c
-            .write(self.address, &[register as u8])
+            .write(self.address, &[register as u8, data])
             .await
             .map_err(|e| Error::I2c(e.kind()))
     }

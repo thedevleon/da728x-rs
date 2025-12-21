@@ -1,6 +1,6 @@
 [package]
 edition = "2024"
-name = "nrf54l15-sample"
+name = "da728x-nrf54l15-example"
 version = "0.1.0"
 license = "MIT"
 publish = false
@@ -13,6 +13,8 @@ embassy-sync = { version = "0.7.2", features = ["defmt"] }
 embassy-nrf = { version = "0.9.0", features = ["defmt", "nrf54l15-app-s", "time-driver-grtc", "gpiote", "unstable-pac", "time"] }
 embedded-io = { version = "0.7.0", features = ["defmt"]  }
 embedded-io-async = { version = "0.7.0", features = ["defmt"] }
+
+da728x = {path = "../../", features = ["debug"]}
 
 rand = { version = "0.9.0", default-features = false }
 
