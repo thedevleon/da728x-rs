@@ -293,7 +293,7 @@ where
             return Err(Error::DeviceBusy);
         }
 
-        // Check if memory is locked
+        // Check if memory is locked (lock bit should be 1 to allow updates)
         let mem_ctl2 = self.read_register(Register::MEM_CTL2).await?;
         let mem_ctl2 = MEM_CTL2::from(mem_ctl2);
         if !mem_ctl2.WAV_MEM_LOCK() {
@@ -437,7 +437,11 @@ where
         ))
     }
 
-    /// Clear IRQ events
+    /// Clear IRQ event 1 register
+    /// 
+    /// Note: This only clears the IRQ_EVENT1 register. In the C driver,
+    /// only this register is cleared as the other event registers are
+    /// automatically cleared or are diagnostic status registers.
     pub async fn clear_irq_events(&mut self) -> Result<(), Error> {
         self.write_register(Register::IRQ_EVENT1, 0xFF).await
     }

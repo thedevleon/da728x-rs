@@ -195,7 +195,7 @@ impl Default for DeviceConfig {
             periodic_op_mode: OperationMode::RTWM,
             nommax: SKIP_INIT,
             absmax: SKIP_INIT,
-            imax: IMAX_DEFAULT as u32,
+            imax: u32::from(IMAX_DEFAULT),
             impd: IMPD_DEFAULT,
             resonant_freq_h: SKIP_INIT,
             resonant_freq_l: SKIP_INIT,
@@ -246,8 +246,8 @@ impl DeviceConfig {
 
     /// Set the maximum current in microamps
     pub fn with_imax_microamp(mut self, val: u32) -> Self {
-        if val < IMAX_LIMIT {
-            self.imax = (val.saturating_sub(28_600)) / IMAX_STEP + 1;
+        if (28_600..IMAX_LIMIT).contains(&val) {
+            self.imax = (val - 28_600) / IMAX_STEP + 1;
         }
         self
     }
