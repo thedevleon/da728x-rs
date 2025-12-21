@@ -1,6 +1,22 @@
 [package]
-name = "da728x-rs"
+name = "da728x"
 version = "0.1.0"
+description = "An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA72782 from Renesas."
+authors = ["thedevleon"]
+license = "MIT"
+
+repository = "https://github.com/thedevleon/da728x-rs"
+readme = "README.md"
+
+keywords = ["da7280", "da7281", "da7282", "haptic-feedback", "lra"]
+categories = ["embedded", "no-std", "hardware-support", "asynchronous"]
 edition = "2024"
 
+[features]
+debug = ["dep:log"]
+
 [dependencies]
+embedded-hal-async = "1.0.0"
+embedded-hal = "1.0.0"
+bitfield-struct = "0.12.1"
+log = { version = "0.4", optional = true }
