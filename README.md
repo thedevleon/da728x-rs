@@ -7,10 +7,10 @@ An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/
 - DA8282
 
 ## What works
-Nothing yet ;)
+- CHIP_REV verification
 
 ## Features
-- None yet
+// TODO
 
 # Usage
 // TODO
