@@ -20,7 +20,7 @@ use registers::*;
 use types::*;
 
 #[cfg(feature = "debug")]
-use defmt::{debug, info};
+use defmt::debug;
 
 /// DA728x chip variant
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,6 +68,9 @@ where
 
         // Verify chip revision matches variant
         let chip_rev = da728x.get_chip_rev().await?;
+
+        #[cfg(feature = "debug")]
+        debug!("CHIP_REV = {:x} {:x}", chip_rev.CHIP_REV_MAJOR(), chip_rev.CHIP_REV_MINOR());
 
         match da728x.variant {
             Variant::DA7280 => {
