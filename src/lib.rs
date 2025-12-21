@@ -20,7 +20,7 @@ use registers::*;
 use types::*;
 
 #[cfg(feature = "debug")]
-use log::{debug, info};
+use defmt::{debug, info};
 
 /// DA728x chip variant
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -13,10 +13,10 @@ categories = ["embedded", "no-std", "hardware-support", "asynchronous"]
 edition = "2024"
 
 [features]
-debug = ["dep:log"]
+debug = ["dep:defmt"]
 
 [dependencies]
 embedded-hal-async = "1.0.0"
 embedded-hal = "1.0.0"
 bitfield-struct = "0.12.1"
-log = { version = "0.4", optional = true }
+defmt = { version = "0.3", optional = true }

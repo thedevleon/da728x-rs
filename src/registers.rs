@@ -44,9 +44,9 @@ pub enum Register {
 #[allow(non_snake_case)]
 pub struct CHIP_REV {
     #[bits(4, access = RO)]
-    pub CHIP_REV_MINOR: u8,
-    #[bits(4, access = RO)]
     pub CHIP_REV_MAJOR: u8,
+    #[bits(4, access = RO)]
+    pub CHIP_REV_MINOR: u8,
 }
 
 /// IRQ Event 1 register (0x03)
