@@ -6,12 +6,18 @@ pub mod errors;
 pub mod registers;
 pub mod types;
 
+// Re-export commonly used types at the crate root
+pub use errors::Error;
+pub use types::{
+    DeviceConfig, DeviceType, GpiConfig, GpiMode, GpiPolarity, OperationMode,
+    SNP_MEM_SIZE,
+};
+
 use embedded_hal::i2c::Error as I2cError;
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 use embedded_hal_async::i2c::I2c;
 
-use errors::Error;
 use registers::*;
 use types::*;
 
