@@ -16,8 +16,10 @@ use defmt::{debug, info};
 use config::{ActuatorConfig, DeviceConfig, DrivingMode, OperationMode};
 use errors::Error;
 use registers::Register;
-use registers::{CHIP_REV, ACTUATOR1, ACTUATOR2, ACTUATOR3, TOP_CTL1, TOP_CFG1, CALIB_V2I_H, CALIB_V2I_L, FRQ_LRA_PER_H, FRQ_LRA_PER_L, IRQ_STATUS1, IRQ_EVENT1, IRQ_EVENT_WARNING_DIAG, IRQ_EVENT_SEQ_DIAG};
+use registers::{CHIP_REV, ACTUATOR1, ACTUATOR2, ACTUATOR3, TOP_CTL1, TOP_CFG1, CALIB_V2I_H, CALIB_V2I_L, FRQ_LRA_PER_H, FRQ_LRA_PER_L, IRQ_STATUS1, IRQ_EVENT1, IRQ_EVENT_WARNING_DIAG, IRQ_EVENT_SEQ_DIAG, FRQ_PHASE_H, FRQ_PHASE_L};
 
+use crate::registers::SEQ_CTL1;
+use crate::registers::TOP_CFG4;
 use crate::registers::TOP_CTL2;
 
 pub enum Variant {
@@ -187,16 +189,29 @@ where
         self.write_register(Register::FRQ_LRA_PER_L, frq_lra_per_l.into()).await?;
 
         // Additional configuration depending on DrivingMode
+
         // WIDEBAND MODE
-        // FREQ_TRACK_EN = 0, ACCELERATION_EN = 0, RAPID_STOP_EN = 0,
-        // BEMF_SENSE_EN = 0, DELAY_H = 0, DELAY_SHIFT_L = 0, DELAY_FREEZE = 1
-        // TODO
+        // FREQ_TRACK_EN = 0, ACCELERATION_EN = 0, RAPID_STOP_EN = 0, BEMF_SENSE_EN = 0
+        // DELAY_H = 0, DELAY_SHIFT_L = 0, DELAY_FREEZE = 1
 
         // CUSTOM WAVEFORM MODE
-        // FREQ_TRACK_EN = 0, ACCELERATION_EN = 0, RAPID_STOP_EN = 0,
-        // BEMF_SENSE_EN = 0, DELAY_H = 0, DELAY_SHIFT_L = 0, DELAY_FREEZE = 1
-        // WAVEGEN_MODE = 1, V2I_FACTOR_FREEZE = 1, AMP_PID_EN = 0
-        // TODO
+        // FREQ_TRACK_EN = 0, ACCELERATION_EN = 0, RAPID_STOP_EN = 0, BEMF_SENSE_EN = 0, AMP_PID_EN = 0
+        // DELAY_H = 0, DELAY_SHIFT_L = 0, DELAY_FREEZE = 1
+        // WAVEGEN_MODE = 1, V2I_FACTOR_FREEZE = 1
+
+        if device_config.driving_mode == DrivingMode::WIDEBAND || device_config.driving_mode == DrivingMode::CUSTOM_WAVEFORM {
+            let frq_phase_h = FRQ_PHASE_H::from(0x00);
+            let frq_phase_l = FRQ_PHASE_L::new().with_DELAY_SHIFT_L(0x00).with_DELAY_FREEZE(true);
+            self.write_register(Register::FRQ_PHASE_H, frq_phase_h.into());
+            self.write_register(Register::FRQ_PHASE_L, frq_phase_l.into());
+        }
+
+        if device_config.driving_mode == DrivingMode::CUSTOM_WAVEFORM {
+            let seq_ctl1 = SEQ_CTL1::new().with_WAVEGEN_MODE(true);
+            let top_cfg4 = TOP_CFG4::new().with_V2I_FACTOR_FREEZE(true); // Unclear if TST_CALIB_IMPEDANCE_DIS should be true/false.
+            self.write_register(Register::SEQ_CTL1, seq_ctl1.into());
+            self.write_register(Register::TOP_CFG4, top_cfg4.into());
+        }
 
         self.actuator_config = Some(actuator_config);
         self.device_config = Some(device_config);
@@ -241,7 +256,7 @@ where
                 }
             }
             DrivingMode::WIDEBAND | DrivingMode::CUSTOM_WAVEFORM => {
-                if !(50..300).contains(&frequency_hz) {
+                if !(25..1024).contains(&frequency_hz) {
                     return Err(Error::InvalidValue);
                 }
             }

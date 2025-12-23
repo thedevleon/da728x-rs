@@ -27,6 +27,7 @@ pub enum Register {
     TOP_INT_CFG1 = 0x17,
     TOP_CTL1 = 0x22,
     TOP_CTL2 = 0x23,
+    SEQ_CTL1 = 0x24,
     SWG_C1 = 0x25,
     SWG_C2 = 0x26,
     SWG_C3 = 0x27,
@@ -229,6 +230,19 @@ pub struct TOP_CTL2 {
     OVERRIDE_VAL: u8
 }
 
+/// SEQ_CTL1 register (0x24)
+#[bitfield(u8)]
+pub struct SEQ_CTL1 {
+    #[bits(1)]
+    pub SEQ_CONTINUE: bool,
+    #[bits(1)]
+    pub WAVEGEN_MODE: bool,
+    #[bits(1)]
+    pub FREQ_WAVEFORM_TIMEBASE: u8,
+    #[bits(5)]
+    __: u8
+}
+
 /// SWG_C1 register (0x25)
 #[bitfield(u8)]
 pub struct SWG_C1 {
@@ -289,7 +303,7 @@ pub struct FRQ_PHASE_L {
     pub DELAY_SHIFT_L: u8,
     #[bits(4)]
     __: u8,
-    DELAY_FREEZE: bool
+    pub DELAY_FREEZE: bool
 }
 
 /// TOP_CFG5 register (0x6E)
