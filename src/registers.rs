@@ -56,7 +56,8 @@ pub struct CHIP_REV {
 }
 
 /// IRQ Event 1 register (0x03)
-#[bitfield(u8, defmt = true)]
+#[cfg_attr(feature = "debug", bitfield(u8, defmt = true))]
+#[cfg_attr(not(feature = "debug"), bitfield(u8))]
 pub struct IRQ_EVENT1 {
     pub E_SEQ_CONTINUE: bool,
     pub E_UVLO: bool,
@@ -69,7 +70,8 @@ pub struct IRQ_EVENT1 {
 }
 
 /// IRQ Event Warning Diag register (0x04)
-#[bitfield(u8, defmt = true)]
+#[cfg_attr(feature = "debug", bitfield(u8, defmt = true))]
+#[cfg_attr(not(feature = "debug"), bitfield(u8))]
 pub struct IRQ_EVENT_WARNING_DIAG {
     #[bits(3)]
     __: u8,
@@ -82,7 +84,8 @@ pub struct IRQ_EVENT_WARNING_DIAG {
 }
 
 /// IRQ Event Sequence Diag register (0x05)
-#[bitfield(u8, defmt = true)]
+#[cfg_attr(feature = "debug", bitfield(u8, defmt = true))]
+#[cfg_attr(not(feature = "debug"), bitfield(u8))]
 pub struct IRQ_EVENT_SEQ_DIAG {
     #[bits(5)]
     __: u8,
@@ -92,7 +95,8 @@ pub struct IRQ_EVENT_SEQ_DIAG {
 }
 
 /// IRQ Status 1 register (0x06)
-#[bitfield(u8, defmt = true)]
+#[cfg_attr(feature = "debug", bitfield(u8, defmt = true))]
+#[cfg_attr(not(feature = "debug"), bitfield(u8))]
 pub struct IRQ_STATUS1 {
     pub STA_SEQ_CONTINUE: bool,
     pub STA_UVLO_VBAT_OK: bool,
@@ -208,7 +212,8 @@ pub struct TOP_INT_CFG1 {
 }
 
 /// TOP_CTL1 register (0x22)
-#[bitfield(u8, defmt = true)]
+#[cfg_attr(feature = "debug", bitfield(u8, defmt = true))]
+#[cfg_attr(not(feature = "debug"), bitfield(u8))]
 pub struct TOP_CTL1 {
     #[bits(3)]
     pub OPERATION_MODE: u8,

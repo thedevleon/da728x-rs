@@ -61,12 +61,6 @@ async fn main(_spawner: Spawner) {
     let status = haptics.get_status().await.unwrap();
     info!("Haptics Status: {:?}", status);
 
-    let (event, warnings, diag) = haptics.get_events().await.unwrap();
-
-    info!("Events: {:?}", event);
-    info!("Warnings: {:?}", warnings);
-    info!("Diag: {:?}", diag);
-
     haptics.enable().await.unwrap();
 
     loop {
@@ -79,5 +73,8 @@ async fn main(_spawner: Spawner) {
         info!("0%");
         haptics.set_override_value(0).await.unwrap();
         Timer::after_millis(800).await;
+
+        let status = haptics.get_status().await.unwrap();
+        info!("Haptics Status: {:?}", status);
     }
 }
