@@ -9,7 +9,7 @@ use embassy_time::Timer;
 use static_cell::ConstStaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-use da728x::DA728x;
+use da728x::{DA728x, Variant};
 use da728x::config::{ActuatorConfig, ActuatorType, DeviceConfig, OperationMode, DrivingMode};
 
 bind_interrupts!(struct Irqs {
@@ -32,7 +32,7 @@ async fn main(_spawner: Spawner) {
     );
 
     info!("Setting up haptics IC...");
-    let mut haptics = DA728x::new(twi, 0x4A, da728x::Variant::DA7280)
+    let mut haptics = DA728x::new(twi, 0x4A, Variant::DA7280)
         .await
         .unwrap();
 
