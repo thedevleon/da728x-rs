@@ -7,6 +7,9 @@ pub enum Error {
     I2c(I2cErrorKind),
     Gpio(DigitalErrorKind),
     VariantMismatch,
+    InvalidValue,
+    NotConfigured,
+    WrongMode
 }
 
 impl Display for Error
@@ -16,6 +19,9 @@ impl Display for Error
             Error::I2c(err) => write!(f, "I2C error: {}", err),
             Error::Gpio(err) => write!(f, "GPIO error: {}", err),
             Error::VariantMismatch => write!(f, "Variant does not match chip ID"),
+            Error::InvalidValue => write!(f,  "Invalid value, most likely out of range."),
+            Error::NotConfigured => write!(f, "Configuration has not beed set yet."),
+            Error::WrongMode => write!(f, "Driver is not in the right mode to support this operation")
         }
     }
 }

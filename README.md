@@ -8,6 +8,16 @@ An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/
 
 ## What works
 - CHIP_REV verification
+- Configuration with validation
+- Setting resonant frequency
+- Enable / disable playback
+- Driving an LRA in frequency track, wideband or custom waveform mode
+- DRO mode, PWM mode, RTWMN mode
+
+## What's missing
+- GPI configuration and ETWM_MODE
+- Uploading into the waveform memory
+- Uploading a script (list of registers and values as exported by GUI)
 
 ## Features
 - `debug` - Enable debug logging with the `defmt` crate
