@@ -68,16 +68,16 @@ async fn main(_spawner: Spawner) {
     info!("Diag: {:?}", diag);
 
     haptics.enable().await.unwrap();
-    haptics.enable().await.unwrap();
 
     loop {
         info!("100%");
         haptics.set_override_value(127).await.unwrap();
-        Timer::after_millis(500).await;
+        Timer::after_millis(800).await;
         info!("33%");
         haptics.set_override_value(42).await.unwrap();
-        Timer::after_millis(500).await;
+        Timer::after_millis(800).await;
         info!("0%");
         haptics.set_override_value(0).await.unwrap();
+        Timer::after_millis(800).await;
     }
 }

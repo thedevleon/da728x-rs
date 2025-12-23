@@ -62,17 +62,17 @@ where
 
         match da728x.variant {
             Variant::DA7280 => {
-                if chip_rev.CHIP_REV_MINOR() != 0xB && chip_rev.CHIP_REV_MAJOR() != 0xA {
+                if chip_rev.CHIP_REV_MINOR() != 0xB || chip_rev.CHIP_REV_MAJOR() != 0xA {
                     return Err(Error::VariantMismatch);
                 }
             }
             Variant::DA7281 => {
-                if chip_rev.CHIP_REV_MINOR() != 0xC && chip_rev.CHIP_REV_MAJOR() != 0xA {
+                if chip_rev.CHIP_REV_MINOR() != 0xC || chip_rev.CHIP_REV_MAJOR() != 0xA {
                     return Err(Error::VariantMismatch);
                 }
             }
             Variant::DA7282 => {
-                if chip_rev.CHIP_REV_MINOR() != 0xD && chip_rev.CHIP_REV_MAJOR() != 0xA {
+                if chip_rev.CHIP_REV_MINOR() != 0xD || chip_rev.CHIP_REV_MAJOR() != 0xA {
                     return Err(Error::VariantMismatch);
                 }
             }
@@ -171,7 +171,7 @@ where
 
         // CALIB_V2I_L / CALIB_V2I_H (impedance)
         let impedance_converted = ((actuator_config.impedance_mOhm as u32 * 1000 * (current_converted_clone + 4)) / 1610400) as u16;
-        let bytes: [u8; 2] = impedance_converted.to_le_bytes();
+        let bytes: [u8; 2] = impedance_converted.to_be_bytes();
         let calib_v2i_h = CALIB_V2I_H::from(bytes[0]);
         let calib_v2i_l = CALIB_V2I_L::from(bytes[1]);
         self.write_register(Register::CALIB_V2I_H, calib_v2i_h.into()).await?;
@@ -247,6 +247,14 @@ where
             }
         }
 
+        let frequency_converted =  (1000000000 / (frequency_hz as u32 * 1333)) as u16;
+        let frequency_converted_h: u8 = ((frequency_converted >> 7) & 0xFF) as u8;
+        let frequency_converted_l: u8 = (frequency_converted & 0x7F) as u8;
+        let frq_lra_per_h = FRQ_LRA_PER_H::from(frequency_converted_h);
+        let frq_lra_per_l = FRQ_LRA_PER_L::new().with_LRA_PER_L(frequency_converted_l);
+        self.write_register(Register::FRQ_LRA_PER_H, frq_lra_per_h.into()).await?;
+        self.write_register(Register::FRQ_LRA_PER_L, frq_lra_per_l.into()).await?;
+
         Ok(())
     }
 
@@ -283,10 +291,10 @@ where
         }
         let device_config = self.device_config.unwrap();
 
-        let top_ctl1 = TOP_CTL1::from(self.read_register(Register::TOP_CTL1).await?);
+        let mut top_ctl1 = TOP_CTL1::from(self.read_register(Register::TOP_CTL1).await?);
         #[cfg(feature = "debug")]
         debug!("TOP_CTL1: {:?}", top_ctl1);
-        top_ctl1.with_OPERATION_MODE(device_config.operation_mode as u8);
+        top_ctl1 = top_ctl1.with_OPERATION_MODE(device_config.operation_mode as u8);
         self.write_register(Register::TOP_CTL1, top_ctl1.into()).await?;
 
         Ok(())
@@ -299,9 +307,9 @@ where
         }
         let device_config = self.device_config.unwrap();
 
-        let top_ctl = TOP_CTL1::from(self.read_register(Register::TOP_CTL1).await?);
-        top_ctl.with_OPERATION_MODE(OperationMode::INACTIVE as u8);
-        self.write_register(Register::TOP_CTL1, top_ctl.into()).await?;
+        let mut top_ctl1 = TOP_CTL1::from(self.read_register(Register::TOP_CTL1).await?);
+        top_ctl1 = top_ctl1.with_OPERATION_MODE(OperationMode::INACTIVE as u8);
+        self.write_register(Register::TOP_CTL1, top_ctl1.into()).await?;
 
         Ok(())
     }
