@@ -167,7 +167,7 @@ where
 
         // ACTUATOR3 (imax)
         let current_converted = ((actuator_config.max_current_mA as u32 * 1000 - 28600) / 7200) as u8; // +1?
-        let current_converted_clone = current_converted.clone() as u32;
+        let current_converted_clone = current_converted as u32;
         let actuator3 = ACTUATOR3::new().with_IMAX(current_converted);
         self.write_register(Register::ACTUATOR3, actuator3.into()).await?;
 
