@@ -1,4 +1,9 @@
 # `da728x`
+
+[![Crate](https://img.shields.io/crates/v/da728x.svg)](https://crates.io/crates/da728x)
+[![API](https://docs.rs/da728x/badge.svg)](https://docs.rs/da728x)
+
+
 An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA7282 from Renesas.
 
 ## Supported ICs
