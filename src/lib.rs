@@ -6,6 +6,7 @@
 pub mod config;
 pub mod errors;
 pub mod registers;
+pub mod waveform;
 
 use embedded_hal_async::i2c::Error as I2cError;
 use embedded_hal_async::i2c::I2c;
@@ -18,9 +19,12 @@ use errors::Error;
 use registers::Register;
 use registers::{CHIP_REV, ACTUATOR1, ACTUATOR2, ACTUATOR3, TOP_CTL1, TOP_CFG1, CALIB_V2I_H, CALIB_V2I_L, FRQ_LRA_PER_H, FRQ_LRA_PER_L, IRQ_STATUS1, IRQ_EVENT1, IRQ_EVENT_WARNING_DIAG, IRQ_EVENT_SEQ_DIAG, FRQ_PHASE_H, FRQ_PHASE_L};
 
+use crate::registers::MEM_CTL2;
 use crate::registers::SEQ_CTL1;
+use crate::registers::SEQ_CTL2;
 use crate::registers::TOP_CFG4;
 use crate::registers::TOP_CTL2;
+use crate::waveform::WaveformMemory;
 
 pub enum Variant {
     DA7280 = 0xBA,
@@ -362,5 +366,118 @@ where
             .write(self.address, &[register as u8, data])
             .await
             .map_err(|e| Error::I2c(e.kind()))
+    }
+
+    /// Write multiple bytes to consecutive memory addresses starting at MEM_CTL1.
+    ///
+    /// This is used for uploading waveform memory data.
+    async fn write_memory_bytes(&mut self, data: &[u8]) -> Result<(), Error> {
+        // Write in chunks to avoid buffer overflow
+        // Most I2C implementations have limited buffer sizes
+        const CHUNK_SIZE: usize = 32;
+
+        let mut offset = 0;
+        while offset < data.len() {
+            let chunk_end = (offset + CHUNK_SIZE).min(data.len());
+            let chunk = &data[offset..chunk_end];
+
+            // Create buffer with register address followed by data
+            // We use a fixed-size buffer since we're no_std
+            let mut buffer = [0u8; CHUNK_SIZE + 1];
+            buffer[0] = Register::MEM_CTL1 as u8 + offset as u8;
+            buffer[1..1 + chunk.len()].copy_from_slice(chunk);
+
+            self.i2c
+                .write(self.address, &buffer[..1 + chunk.len()])
+                .await
+                .map_err(|e| Error::I2c(e.kind()))?;
+
+            offset = chunk_end;
+        }
+
+        Ok(())
+    }
+
+    /// Unlock waveform memory for writing.
+    ///
+    /// Must be called before uploading waveform memory.
+    pub async fn unlock_waveform_memory(&mut self) -> Result<(), Error> {
+        let mem_ctl2 = MEM_CTL2::new().with_WAV_MEM_LOCK(false);
+        self.write_register(Register::MEM_CTL2, mem_ctl2.into()).await
+    }
+
+    /// Lock waveform memory to prevent accidental writes.
+    ///
+    /// Should be called after uploading waveform memory.
+    pub async fn lock_waveform_memory(&mut self) -> Result<(), Error> {
+        let mem_ctl2 = MEM_CTL2::new().with_WAV_MEM_LOCK(true);
+        self.write_register(Register::MEM_CTL2, mem_ctl2.into()).await
+    }
+
+    /// Upload waveform memory to the device.
+    ///
+    /// # Arguments
+    /// * `memory` - The waveform memory to upload
+    /// * `lock_after` - Whether to lock memory after upload
+    ///
+    /// # Errors
+    /// Returns an I2C error if communication fails.
+    pub async fn upload_waveform_memory(
+        &mut self,
+        memory: &WaveformMemory,
+        lock_after: bool,
+    ) -> Result<(), Error> {
+        // Unlock memory first
+        self.unlock_waveform_memory().await?;
+
+        // Write the waveform data
+        self.write_memory_bytes(memory.as_bytes()).await?;
+
+        // Optionally lock memory
+        if lock_after {
+            self.lock_waveform_memory().await?;
+        }
+
+        Ok(())
+    }
+
+    /// Select a sequence for playback.
+    ///
+    /// # Arguments
+    /// * `sequence_id` - Sequence ID (0-15)
+    /// * `loops` - Number of times to loop (0-15, where 0 means play once)
+    ///
+    /// # Errors
+    /// Returns `InvalidValue` if parameters are out of range.
+    pub async fn select_sequence(&mut self, sequence_id: u8, loops: u8) -> Result<(), Error> {
+        if sequence_id > 15 || loops > 15 {
+            return Err(Error::InvalidValue);
+        }
+
+        let seq_ctl2 = SEQ_CTL2::new()
+            .with_PS_SEQ_ID(sequence_id)
+            .with_PS_SEQ_LOOP(loops);
+        self.write_register(Register::SEQ_CTL2, seq_ctl2.into()).await
+    }
+
+    /// Start playback of the selected sequence.
+    ///
+    /// The device must be in RTWM_MODE and enabled for this to work.
+    pub async fn start_sequence(&mut self) -> Result<(), Error> {
+        let mut top_ctl1 = TOP_CTL1::from(self.read_register(Register::TOP_CTL1).await?);
+        top_ctl1 = top_ctl1.with_SEQ_START(true);
+        self.write_register(Register::TOP_CTL1, top_ctl1.into()).await
+    }
+
+    /// Select and immediately start playing a sequence.
+    ///
+    /// This is a convenience method that combines `select_sequence` and `start_sequence`.
+    ///
+    /// # Arguments
+    /// * `sequence_id` - Sequence ID (0-15)
+    /// * `loops` - Number of times to loop (0-15, where 0 means play once)
+    pub async fn play_sequence(&mut self, sequence_id: u8, loops: u8) -> Result<(), Error> {
+        self.select_sequence(sequence_id, loops).await?;
+        self.start_sequence().await
     }
 }
