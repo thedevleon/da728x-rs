@@ -1,0 +1,26 @@
+[package]
+edition = "2024"
+name = "da728x-rp2040-example"
+version = "0.1.0"
+license = "MIT"
+publish = false
+
+[dependencies]
+embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { version = "0.5", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-rp = { version = "0.9", features = ["defmt", "time-driver", "rp2040", "critical-section-impl"] }
+embassy-futures = { version = "0.1" }
+
+da728x = { path = "../../", features = ["debug"] }
+
+defmt = "1.0"
+defmt-rtt = "1.0"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+cortex-m-rt = "0.7"
+
+portable-atomic = { version = "1", features = ["critical-section"] }
+
+[profile.release]
+debug = 2
