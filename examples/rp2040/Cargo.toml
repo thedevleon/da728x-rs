@@ -1,9 +1,26 @@
 [package]
 edition = "2024"
-name = "da728x-rp2040-example"
+name = "da728x-rp2040-examples"
 version = "0.1.0"
 license = "MIT"
 publish = false
+
+# No default binary - use examples instead
+[[example]]
+name = "simple_dro"
+path = "examples/simple_dro.rs"
+
+[[example]]
+name = "wideband_melody"
+path = "examples/wideband_melody.rs"
+
+[[example]]
+name = "simple_waveform"
+path = "examples/simple_waveform.rs"
+
+[[example]]
+name = "waveform_effects"
+path = "examples/waveform_effects.rs"
 
 [dependencies]
 embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread", "defmt"] }

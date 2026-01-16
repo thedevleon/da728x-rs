@@ -1,11 +1,46 @@
-//! RP2040 example demonstrating haptic feedback with DA7280.
+//! Complex waveform effects example demonstrating multiple haptic patterns.
 //!
-//! This example tests both DRO and RTWM modes.
+//! This example shows how to create and play multiple haptic effects:
+//! - Click: Sharp, quick feedback
+//! - Double-click: Two clicks with a pause
+//! - Buzz: Sustained vibration with looping
 //!
-//! Hardware setup:
+//! # Hardware Setup
+//!
+//! This example is designed for the **SparkFun Qwiic Haptic Driver (DA7280)**
+//! connected to an RP2040 board via I2C.
+//!
 //! - DA7280 connected via I2C0 (SDA: GP16, SCL: GP17)
 //! - I2C address: 0x4A (default)
-//! - LRA actuator should be compressed between two surfaces!
+//!
+//! # Important: Actuator Loading
+//!
+//! The LRA actuator **must be mechanically loaded** (compressed between two
+//! surfaces) for proper operation. When unloaded:
+//!
+//! - Effects may feel weak or not play at all
+//! - You will see `ACTUATOR FAULT` warnings in the logs
+//! - This is expected behavior - the DA7280 uses back-EMF sensing to detect
+//!   abnormal actuator conditions
+//!
+//! To test properly, place the haptic motor between two solid objects (e.g.,
+//! hold it pressed against a table with your finger).
+//!
+//! # Waveform Memory Layout
+//!
+//! This example creates:
+//! - Snippet 1: Click shape (quick rise, smooth fall)
+//! - Snippet 2: Bump shape (gradual rise, hold, fall)
+//! - Snippet 3: Buzz shape (rise, sustain, fall)
+//! - Sequence 0: Single click
+//! - Sequence 1: Double click (two clicks with silence between)
+//! - Sequence 2: Buzz (sustained vibration with loop)
+//!
+//! # Running
+//!
+//! ```bash
+//! cargo run --release --example waveform_effects
+//! ```
 
 #![no_std]
 #![no_main]
@@ -27,8 +62,10 @@ use da728x::{Variant, DA728x};
 async fn main(_spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    info!("=== DA7280 RTWM Mode Test ===");
+    info!("=== Waveform Effects Example ===");
+    info!("Make sure the actuator is loaded (pressed between two surfaces)!");
 
+    // Initialize I2C
     info!("Initializing I2C...");
     let sda = p.PIN_16;
     let scl = p.PIN_17;
@@ -37,88 +74,63 @@ async fn main(_spawner: Spawner) {
 
     let i2c = I2c::new_async(p.I2C0, scl, sda, Irqs, config);
 
+    // Initialize DA7280
     info!("Setting up DA7280 haptics driver...");
     let mut haptics = DA728x::new(i2c, 0x4A, Variant::DA7280)
         .await
         .unwrap();
     info!("DA7280 initialized successfully.");
 
-    // G1040003D LRA specs - reduced drive to avoid overcurrent
+    // Configure actuator
     let actuator_config = ActuatorConfig {
         actuator_type: ActuatorType::LRA,
-        nominal_max_mV: 1800,      // Reduced from 2500 to lower current
-        absolute_max_mV: 2000,     // Reduced headroom
-        max_current_mA: 120,       // Reduced from 170 mA
-        impedance_mOhm: 15000,     // ~15Ω
-        frequency_Hz: 170,         // 170 Hz resonant
+        nominal_max_mV: 1800,
+        absolute_max_mV: 2000,
+        max_current_mA: 120,
+        impedance_mOhm: 15000,
+        frequency_Hz: 170,
     };
 
-    // First do a quick DRO test to verify hardware
-    // Disable acceleration to reduce current draw
-    info!("=== Quick DRO test ===");
-    let dro_config = DeviceConfig {
-        operation_mode: OperationMode::DRO_MODE,
-        driving_mode: DrivingMode::FREQUENCY_TRACK,
-        acceleration: false,  // Disabled to reduce current
-        rapid_stop: false,    // Disabled to reduce current
-    };
-
-    haptics.configure(actuator_config, dro_config).await.unwrap();
-    haptics.enable().await.unwrap();
-
-    for i in 0..3 {
-        info!("DRO pulse {}/3", i + 1);
-        haptics.set_override_value(127).await.unwrap();
-        Timer::after_millis(100).await;
-        haptics.set_override_value(0).await.unwrap();
-        Timer::after_millis(200).await;
-    }
-
-    info!("DRO test complete");
-    haptics.disable().await.unwrap();
-    Timer::after_millis(100).await;
-
-    // Now test RTWM mode
-    info!("=== RTWM Mode Test ===");
-
-    // Build simple waveform memory
+    // Build waveform memory with multiple effects
     info!("Building waveform memory...");
-    let memory = build_simple_waveform_memory();
+    let memory = build_waveform_memory();
     info!(
-        "Memory: {} bytes, {} snippets, {} sequences",
+        "Memory built: {} bytes, {} snippets, {} sequences",
         memory.len(),
         memory.num_snippets(),
         memory.num_sequences()
     );
 
-    // Configure for RTWM mode - no acceleration to reduce current
-    let rtwm_config = DeviceConfig {
+    // Configure for RTWM mode
+    let device_config = DeviceConfig {
         operation_mode: OperationMode::RTWM_MODE,
         driving_mode: DrivingMode::FREQUENCY_TRACK,
         acceleration: false,
         rapid_stop: false,
     };
 
-    haptics.configure(actuator_config, rtwm_config).await.unwrap();
+    haptics.configure(actuator_config, device_config).await.unwrap();
     info!("Configured for RTWM mode.");
 
-    // Upload waveform memory
+    // Upload and verify waveform memory
     info!("Uploading waveform memory...");
     haptics.upload_waveform_memory(&memory, false).await.unwrap();
 
-    // Verify memory
+    // Verify upload
     let mut readback = [0u8; 32];
-    let _ = haptics.read_waveform_memory(memory.len(), &mut readback).await.unwrap();
+    haptics.read_waveform_memory(memory.len(), &mut readback).await.unwrap();
     let expected = memory.as_bytes();
-    let mut ok = true;
+    let mut verified = true;
     for i in 0..memory.len() {
         if readback[i] != expected[i] {
-            warn!("Mismatch at {}: {:02X} vs {:02X}", i, expected[i], readback[i]);
-            ok = false;
+            error!("Mismatch at byte {}: got {:02X}, expected {:02X}", i, readback[i], expected[i]);
+            verified = false;
         }
     }
-    if ok {
+    if verified {
         info!("Memory verification: PASSED");
+    } else {
+        error!("Memory verification: FAILED");
     }
 
     // Lock memory and enable
@@ -128,25 +140,25 @@ async fn main(_spawner: Spawner) {
     // Clear any stale events
     let _ = haptics.get_events().await;
 
-    info!("RTWM enabled. Playing sequences...");
+    info!("RTWM enabled. Playing effects...");
 
     loop {
-        // Sequence 0: Single click
-        info!("Sequence 0: Click");
+        // Effect 1: Single click
+        info!("Effect: Click");
         haptics.play_sequence(0, 0).await.unwrap();
         Timer::after_millis(600).await;
 
-        // Sequence 1: Double click
-        info!("Sequence 1: Double click");
+        // Effect 2: Double click
+        info!("Effect: Double click");
         haptics.play_sequence(1, 0).await.unwrap();
         Timer::after_millis(800).await;
 
-        // Sequence 2: Buzz (looped)
-        info!("Sequence 2: Buzz");
+        // Effect 3: Buzz
+        info!("Effect: Buzz");
         haptics.play_sequence(2, 0).await.unwrap();
         Timer::after_millis(1500).await;
 
-        // Check for all error types
+        // Check for errors
         let (events, warnings, seq_diag) = haptics.get_events().await.unwrap();
         let mut has_error = false;
 
@@ -155,63 +167,55 @@ async fn main(_spawner: Spawner) {
             has_error = true;
         }
         if events.E_ACTUATOR_FAULT() {
-            warn!("ACTUATOR FAULT!");
+            warn!("ACTUATOR FAULT - Is the actuator loaded?");
             has_error = true;
         }
         if events.E_WARNING() {
-            warn!("WARNING: {:?}", warnings);
+            warn!("Warning: {:?}", warnings);
             has_error = true;
         }
         if events.E_SEQ_FAULT() {
-            warn!("SEQ_FAULT: {:?}", seq_diag);
-            has_error = true;
-        }
-        if events.E_OVERTEMP_CRIT() {
-            warn!("OVERTEMP!");
-            has_error = true;
-        }
-        if events.E_UVLO() {
-            warn!("UNDERVOLTAGE!");
+            warn!("Sequence fault: {:?}", seq_diag);
             has_error = true;
         }
 
         if !has_error {
-            info!("All OK");
+            info!("All effects OK");
         }
 
         Timer::after_millis(1000).await;
     }
 }
 
-/// Build waveform memory with multiple effects.
-fn build_simple_waveform_memory() -> da728x::waveform::WaveformMemory {
-    // Snippet 1: Quick rise, smooth fall
+/// Build waveform memory with click, bump, and buzz effects.
+fn build_waveform_memory() -> da728x::waveform::WaveformMemory {
+    // Snippet 1: Click - quick rise, smooth fall
     let click_snippet = SnippetBuilder::new()
-        .ramp(1, 15).unwrap()  // Fast rise (1 timebase)
-        .ramp(2, 0).unwrap()   // Smooth fall (2 timebases)
+        .ramp(1, 15).unwrap()  // Fast rise to 100%
+        .ramp(2, 0).unwrap()   // Smooth fall to 0%
         .build()
         .unwrap();
 
-    // Snippet 2: Soft bump
+    // Snippet 2: Bump - gradual rise, hold, gradual fall
     let bump_snippet = SnippetBuilder::new()
-        .ramp(2, 10).unwrap()
-        .step(1, 10).unwrap()
-        .ramp(2, 0).unwrap()
+        .ramp(2, 10).unwrap()  // Rise to ~67%
+        .step(1, 10).unwrap()  // Hold for 1 timebase
+        .ramp(2, 0).unwrap()   // Fall to 0%
         .build()
         .unwrap();
 
-    // Snippet 3: Buzz
+    // Snippet 3: Buzz - quick rise, sustain, quick fall
     let buzz_snippet = SnippetBuilder::new()
-        .ramp(1, 12).unwrap()
-        .step(4, 12).unwrap()
-        .ramp(1, 0).unwrap()
+        .ramp(1, 12).unwrap()  // Quick rise to ~80%
+        .step(4, 12).unwrap()  // Sustain for 4 timebases
+        .ramp(1, 0).unwrap()   // Quick fall
         .build()
         .unwrap();
 
-    // Sequence 0: Single click (using slower timebase for smoother feel)
+    // Sequence 0: Single click
     let click_frame = FrameBuilder::new(1).unwrap()
         .gain(Gain::Full)
-        .timebase(Timebase::Ms21_76)  // Slower timebase for smoother transitions
+        .timebase(Timebase::Ms21_76)
         .build()
         .unwrap();
     let click_seq = SequenceBuilder::new()
@@ -219,12 +223,12 @@ fn build_simple_waveform_memory() -> da728x::waveform::WaveformMemory {
         .build()
         .unwrap();
 
-    // Sequence 1: Double click with pause between
+    // Sequence 1: Double click (click + silence + click)
     let frame1 = FrameBuilder::new(1).unwrap()
         .timebase(Timebase::Ms21_76)
         .build()
         .unwrap();
-    // Snippet 0 is built-in silence (2 timebases). Use slower timebase for longer pause.
+    // Use built-in silence snippet (ID 0) for pause between clicks
     let silence = FrameBuilder::silence()
         .timebase(Timebase::Ms43_52)  // ~87ms pause
         .build()
@@ -240,11 +244,11 @@ fn build_simple_waveform_memory() -> da728x::waveform::WaveformMemory {
         .build()
         .unwrap();
 
-    // Sequence 2: Buzz with loop
+    // Sequence 2: Buzz with loop for sustained vibration
     let buzz_frame = FrameBuilder::new(3).unwrap()
         .gain(Gain::Half)
         .timebase(Timebase::Ms21_76)
-        .loop_count(2).unwrap()
+        .loop_count(2).unwrap()  // Play 3 times total
         .build()
         .unwrap();
     let buzz_seq = SequenceBuilder::new()
@@ -252,7 +256,8 @@ fn build_simple_waveform_memory() -> da728x::waveform::WaveformMemory {
         .build()
         .unwrap();
 
-    WaveformMemoryBuilder::new(false)
+    // Build the complete waveform memory
+    WaveformMemoryBuilder::new(false)  // acceleration disabled
         .add_snippet(click_snippet).unwrap()
         .add_snippet(bump_snippet).unwrap()
         .add_snippet(buzz_snippet).unwrap()
