@@ -26,6 +26,13 @@
 //! To test properly, place the haptic motor between two solid objects (e.g.,
 //! hold it pressed against a table with your finger).
 //!
+//! # Fault Recovery
+//!
+//! The driver enables `EMBEDDED_MODE` which allows automatic fault clearing
+//! when the device enters IDLE state. If a fault occurs (e.g., from an unloaded
+//! actuator), the example recovers by briefly disabling and re-enabling the
+//! device, which triggers the auto-clear mechanism.
+//!
 //! # Waveform Memory Layout
 //!
 //! This example creates:
@@ -158,17 +165,21 @@ async fn main(_spawner: Spawner) {
         haptics.play_sequence(2, 0).await.unwrap();
         Timer::after_millis(1500).await;
 
-        // Check for errors
+        // Check for errors and recover if needed
+        // EMBEDDED_MODE is enabled, so faults auto-clear when going to IDLE.
         let (events, warnings, seq_diag) = haptics.get_events().await.unwrap();
         let mut has_error = false;
+        let mut needs_recovery = false;
 
         if events.E_OC_FAULT() {
             warn!("OVERCURRENT FAULT!");
             has_error = true;
+            needs_recovery = true;
         }
         if events.E_ACTUATOR_FAULT() {
-            warn!("ACTUATOR FAULT - Is the actuator loaded?");
+            warn!("ACTUATOR FAULT - Is the actuator loaded? Auto-recovering...");
             has_error = true;
+            needs_recovery = true;
         }
         if events.E_WARNING() {
             warn!("Warning: {:?}", warnings);
@@ -177,9 +188,16 @@ async fn main(_spawner: Spawner) {
         if events.E_SEQ_FAULT() {
             warn!("Sequence fault: {:?}", seq_diag);
             has_error = true;
+            needs_recovery = true;
         }
 
-        if !has_error {
+        if needs_recovery {
+            // Disable to enter IDLE state (triggers auto-clear via EMBEDDED_MODE)
+            haptics.disable().await.unwrap();
+            Timer::after_millis(50).await;
+            haptics.enable().await.unwrap();
+            info!("Recovery complete - effects will resume when actuator is loaded");
+        } else if !has_error {
             info!("All effects OK");
         }
 
