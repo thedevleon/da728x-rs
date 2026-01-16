@@ -42,6 +42,7 @@ pub enum Register {
     FRQ_PHASE_L = 0x49,
     TOP_CFG5 = 0x6E,
     IRQ_MASK2 = 0x83,
+    SNP_MEM_0 = 0x84,
     SNP_MEM_99 = 0xE7,
 }
 
@@ -180,8 +181,11 @@ pub struct TOP_CFG1 {
     pub BEMF_SENSE_EN: bool,
     #[bits(1)]
     pub ACTUATOR_TYPE: u8,
-    #[bits(2)]
+    #[bits(1)]
     __: u8,
+    /// Embedded operation enable (self-clearing faults).
+    /// When enabled, DA7280 automatically clears faults when entering IDLE state.
+    pub EMBEDDED_MODE: bool,
 }
 
 /// TOP_CFG2 register (0x14)
@@ -280,6 +284,13 @@ pub struct GPI_CTL {
     pub SEQUENCE_ID: u8,
     #[bits(1)]
     __: u8,
+}
+
+/// MEM_CTL1 register (0x2C)
+#[bitfield(u8)]
+pub struct MEM_CTL1 {
+    #[bits(8, access = RO)]
+    pub WAV_MEM_BASE_ADDR: u8,
 }
 
 /// MEM_CTL2 register (0x2D)
