@@ -42,6 +42,7 @@ pub enum Register {
     FRQ_PHASE_L = 0x49,
     TOP_CFG5 = 0x6E,
     IRQ_MASK2 = 0x83,
+    SNP_MEM_0 = 0x84,
     SNP_MEM_99 = 0xE7,
 }
 

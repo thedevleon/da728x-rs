@@ -3,36 +3,40 @@
 use crate::errors::Error;
 
 /// Gain multiplier for frame playback.
+///
+/// Values correspond to datasheet GAIN[1:0] field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum Gain {
-    /// 0.25x gain
-    Quarter = 0,
-    /// 0.5x gain
-    Half = 1,
-    /// 0.75x gain
-    ThreeQuarter = 2,
-    /// 1.0x gain (default)
+    /// 0 dB (1.0x gain, default)
     #[default]
-    Full = 3,
+    Full = 0,
+    /// -6 dB (~0.5x gain)
+    Half = 1,
+    /// -12 dB (~0.25x gain)
+    Quarter = 2,
+    /// -18 dB (~0.125x gain)
+    Eighth = 3,
 }
 
 /// Timebase for PWL point duration.
 ///
 /// Each PWL point's TIME field is multiplied by this timebase
 /// to determine the actual duration.
+///
+/// These values assume FREQ_WAVEFORM_TIMEBASE = 0 (default).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum Timebase {
     /// 5.44ms timebase
     #[default]
     Ms5_44 = 0,
-    /// 10.88ms timebase
-    Ms10_88 = 1,
     /// 21.76ms timebase
-    Ms21_76 = 2,
+    Ms21_76 = 1,
     /// 43.52ms timebase
-    Ms43_52 = 3,
+    Ms43_52 = 2,
+    /// 87.04ms timebase
+    Ms87_04 = 3,
 }
 
 /// Maximum frame size in bytes.
@@ -85,7 +89,7 @@ impl Frame {
 /// // Frame with all options
 /// let frame = FrameBuilder::new(1)?
 ///     .gain(Gain::Full)
-///     .timebase(Timebase::Ms10_88)
+///     .timebase(Timebase::Ms21_76)
 ///     .loop_count(3)?
 ///     .build()?;
 /// # Ok::<(), da728x::errors::Error>(())
@@ -118,6 +122,20 @@ impl FrameBuilder {
             loop_count: None,
             frequency: None,
         })
+    }
+
+    /// Create a frame builder for the built-in silence snippet (ID 0).
+    ///
+    /// The silence snippet plays 2 timebases of silence. Use `.timebase()`
+    /// to control the duration (e.g., Ms43_52 gives ~87ms of silence).
+    pub fn silence() -> Self {
+        Self {
+            snippet_id: 0,
+            gain: Gain::default(),
+            timebase: Timebase::default(),
+            loop_count: None,
+            frequency: None,
+        }
     }
 
     /// Set the gain multiplier.
@@ -221,12 +239,12 @@ mod tests {
 
     #[test]
     fn test_frame_single_byte() {
-        // Snippet ID 1, default gain and timebase
+        // Snippet ID 1, default gain (Full=0) and timebase (Ms5_44=0)
         let frame = FrameBuilder::new(1).unwrap().build().unwrap();
         assert_eq!(frame.byte_len(), 1);
-        // Gain=3 (Full), Timebase=0, SNP_ID=1
-        // 0_11_00_001 = 0x61
-        assert_eq!(frame.as_bytes()[0], 0x61);
+        // Gain=0 (Full), Timebase=0, SNP_ID=1
+        // 0_00_00_001 = 0x01
+        assert_eq!(frame.as_bytes()[0], 0x01);
     }
 
     #[test]
@@ -234,9 +252,9 @@ mod tests {
         // Snippet ID 8 (needs high bit)
         let frame = FrameBuilder::new(8).unwrap().build().unwrap();
         assert_eq!(frame.byte_len(), 2);
-        // Byte 1: Gain=3, Timebase=0, SNP_ID_L=0
-        // 0_11_00_000 = 0x60
-        assert_eq!(frame.as_bytes()[0], 0x60);
+        // Byte 1: Gain=0, Timebase=0, SNP_ID_L=0
+        // 0_00_00_000 = 0x00
+        assert_eq!(frame.as_bytes()[0], 0x00);
         // Byte 2: 1_0000_0_0_1 = 0x81
         assert_eq!(frame.as_bytes()[1], 0x81);
     }
@@ -250,6 +268,8 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(frame.byte_len(), 2);
+        // Byte 1: 0_00_00_001 = 0x01
+        assert_eq!(frame.as_bytes()[0], 0x01);
         // Byte 2: 1_0101_0_0_0 = 0xA8
         assert_eq!(frame.as_bytes()[1], 0xA8);
     }
@@ -263,6 +283,8 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(frame.byte_len(), 3);
+        // Byte 1: 0_00_00_001 = 0x01
+        assert_eq!(frame.as_bytes()[0], 0x01);
         // 300 = 0x12C = 0b1_0010_1100
         // Byte 2: 1_0000_1_1_0 = 0x86
         assert_eq!(frame.as_bytes()[1], 0x86);
@@ -294,6 +316,7 @@ mod tests {
 
     #[test]
     fn test_frame_all_options() {
+        // Snippet ID 15, Gain::Half (1), Timebase::Ms43_52 (2), loop=10, freq=256
         let frame = FrameBuilder::new(15)
             .unwrap()
             .gain(Gain::Half)
@@ -306,8 +329,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(frame.byte_len(), 3);
-        // Byte 1: 0_01_11_111 = 0x3F
-        assert_eq!(frame.as_bytes()[0], 0x3F);
+        // Byte 1: 0_01_10_111 = 0x37
+        // Gain=1 (Half), Timebase=2 (Ms43_52), SNP_ID_L=7
+        assert_eq!(frame.as_bytes()[0], 0x37);
         // Byte 2: 1_1010_1_1_1 = 0xD7
         // Loop=10, FREQ_CMD=1, FREQ[8]=1, SNP_ID_H=1
         assert_eq!(frame.as_bytes()[1], 0xD7);
