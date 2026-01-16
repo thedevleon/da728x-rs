@@ -88,7 +88,7 @@ async fn main(_spawner: Spawner) {
         .unwrap();
     info!("DA7280 initialized successfully.");
 
-    // Configure actuator
+    // Configure actuator - these values work well with the SparkFun board's LRA
     let actuator_config = ActuatorConfig {
         actuator_type: ActuatorType::LRA,
         nominal_max_mV: 1800,
@@ -216,16 +216,16 @@ fn build_waveform_memory() -> da728x::waveform::WaveformMemory {
 
     // Snippet 2: Bump - gradual rise, hold, gradual fall
     let bump_snippet = SnippetBuilder::new()
-        .ramp(2, 10).unwrap()  // Rise to ~67%
-        .step(1, 10).unwrap()  // Hold for 1 timebase
+        .ramp(2, 15).unwrap()  // Rise to 100%
+        .step(2, 15).unwrap()  // Hold for 2 timebases
         .ramp(2, 0).unwrap()   // Fall to 0%
         .build()
         .unwrap();
 
     // Snippet 3: Buzz - quick rise, sustain, quick fall
     let buzz_snippet = SnippetBuilder::new()
-        .ramp(1, 12).unwrap()  // Quick rise to ~80%
-        .step(4, 12).unwrap()  // Sustain for 4 timebases
+        .ramp(1, 15).unwrap()  // Quick rise to 100%
+        .step(6, 15).unwrap()  // Sustain for 6 timebases
         .ramp(1, 0).unwrap()   // Quick fall
         .build()
         .unwrap();
@@ -243,6 +243,7 @@ fn build_waveform_memory() -> da728x::waveform::WaveformMemory {
 
     // Sequence 1: Double click (click + silence + click)
     let frame1 = FrameBuilder::new(1).unwrap()
+        .gain(Gain::Full)
         .timebase(Timebase::Ms21_76)
         .build()
         .unwrap();
@@ -252,6 +253,7 @@ fn build_waveform_memory() -> da728x::waveform::WaveformMemory {
         .build()
         .unwrap();
     let frame2 = FrameBuilder::new(1).unwrap()
+        .gain(Gain::Full)
         .timebase(Timebase::Ms21_76)
         .build()
         .unwrap();
@@ -264,9 +266,9 @@ fn build_waveform_memory() -> da728x::waveform::WaveformMemory {
 
     // Sequence 2: Buzz with loop for sustained vibration
     let buzz_frame = FrameBuilder::new(3).unwrap()
-        .gain(Gain::Half)
+        .gain(Gain::Full)
         .timebase(Timebase::Ms21_76)
-        .loop_count(2).unwrap()  // Play 3 times total
+        .loop_count(3).unwrap()  // Play 4 times total
         .build()
         .unwrap();
     let buzz_seq = SequenceBuilder::new()

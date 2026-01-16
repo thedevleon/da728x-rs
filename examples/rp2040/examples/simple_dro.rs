@@ -24,6 +24,13 @@
 //! To test properly, place the haptic motor between two solid objects (e.g.,
 //! hold it pressed against a table with your finger).
 //!
+//! # Fault Recovery
+//!
+//! The driver enables `EMBEDDED_MODE` which allows automatic fault clearing
+//! when the device enters IDLE state. If a fault occurs (e.g., from an unloaded
+//! actuator), the example recovers by briefly disabling and re-enabling the
+//! device, which triggers the auto-clear mechanism.
+//!
 //! # Running
 //!
 //! ```bash

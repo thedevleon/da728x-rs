@@ -88,7 +88,7 @@ async fn main(_spawner: Spawner) {
         .unwrap();
     info!("DA7280 initialized successfully.");
 
-    // Configure actuator
+    // Configure actuator - these values work well with the SparkFun board's LRA
     let actuator_config = ActuatorConfig {
         actuator_type: ActuatorType::LRA,
         nominal_max_mV: 1800,
