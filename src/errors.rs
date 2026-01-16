@@ -9,7 +9,18 @@ pub enum Error {
     VariantMismatch,
     InvalidValue,
     NotConfigured,
-    WrongMode
+    WrongMode,
+    // Waveform memory errors
+    WaveformMemoryFull,
+    TooManySnippets,
+    TooManySequences,
+    InvalidSnippetId,
+    InvalidTimebase,
+    InvalidAmplitude,
+    InvalidFrequency,
+    InvalidLoopCount,
+    EmptySnippet,
+    EmptySequence,
 }
 
 impl Display for Error
@@ -21,7 +32,17 @@ impl Display for Error
             Error::VariantMismatch => write!(f, "Variant does not match chip ID"),
             Error::InvalidValue => write!(f,  "Invalid value, most likely out of range."),
             Error::NotConfigured => write!(f, "Configuration has not beed set yet."),
-            Error::WrongMode => write!(f, "Driver is not in the right mode to support this operation")
+            Error::WrongMode => write!(f, "Driver is not in the right mode to support this operation"),
+            Error::WaveformMemoryFull => write!(f, "Waveform memory exceeds 100 bytes"),
+            Error::TooManySnippets => write!(f, "Too many snippets (max 15)"),
+            Error::TooManySequences => write!(f, "Too many sequences (max 16)"),
+            Error::InvalidSnippetId => write!(f, "Invalid snippet ID"),
+            Error::InvalidTimebase => write!(f, "Invalid timebase value"),
+            Error::InvalidAmplitude => write!(f, "Invalid amplitude value"),
+            Error::InvalidFrequency => write!(f, "Invalid frequency value"),
+            Error::InvalidLoopCount => write!(f, "Invalid loop count"),
+            Error::EmptySnippet => write!(f, "Snippet must contain at least one point"),
+            Error::EmptySequence => write!(f, "Sequence must contain at least one frame"),
         }
     }
 }
