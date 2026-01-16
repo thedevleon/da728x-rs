@@ -6,7 +6,7 @@
 //! 3. Play sequences using RTWM (Register-Triggered Waveform Memory) mode
 //!
 //! Hardware setup:
-//! - DA7280 connected via I2C (SDA: GP4, SCL: GP5)
+//! - DA7280 connected via I2C0 (SDA: GP16, SCL: GP17)
 //! - I2C address: 0x4A (default)
 
 #![no_std]
@@ -30,8 +30,8 @@ async fn main(_spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     info!("Initializing I2C...");
-    let sda = p.PIN_4;
-    let scl = p.PIN_5;
+    let sda = p.PIN_16;
+    let scl = p.PIN_17;
     let mut config = Config::default();
     config.frequency = 400_000; // 400kHz
 
