@@ -150,13 +150,15 @@ where
         }
 
         // TOP_CFG1 register (type and features)
+        // EMBEDDED_MODE enables automatic fault clearing when entering IDLE state
         let top_cfg1 = TOP_CFG1::new()
         .with_ACTUATOR_TYPE(actuator_config.actuator_type as u8)
         .with_BEMF_SENSE_EN(bemf_sense_en)
         .with_FREQ_TRACK_EN(frequency_track_en)
         .with_ACCELERATION_EN(acceleration_en)
         .with_RAPID_STOP_EN(rapid_stop_en)
-        .with_AMP_PID_EN(false); // Only supported with ERMs, disable for now.
+        .with_AMP_PID_EN(false) // Only supported with ERMs, disable for now.
+        .with_EMBEDDED_MODE(true); // Auto-clear faults when entering IDLE
         self.write_register(Register::TOP_CFG1, top_cfg1.into()).await?;
 
         // TOP_CFG2 - MEM_DATA_SIGNED must match acceleration config:

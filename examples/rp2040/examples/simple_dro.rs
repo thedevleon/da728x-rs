@@ -101,9 +101,18 @@ async fn main(_spawner: Spawner) {
         Timer::after_millis(400).await;
 
         // Check for errors
+        // Note: EMBEDDED_MODE is enabled, so faults auto-clear when going to IDLE.
+        // If a fault occurs, disable briefly to trigger auto-clear, then re-enable.
         let (events, warnings, _) = haptics.get_events().await.unwrap();
         if events.E_ACTUATOR_FAULT() {
-            warn!("ACTUATOR FAULT - Is the actuator loaded?");
+            warn!("ACTUATOR FAULT - Is the actuator loaded? Auto-recovering...");
+
+            // Disable to enter IDLE state (triggers auto-clear via EMBEDDED_MODE)
+            haptics.disable().await.unwrap();
+            Timer::after_millis(50).await;
+            haptics.enable().await.unwrap();
+
+            info!("Recovery complete - pulses will resume when actuator is loaded");
         }
         if events.E_WARNING() {
             warn!("Warning: {:?}", warnings);

@@ -24,6 +24,13 @@
 //! To test properly, place the haptic motor between two solid objects (e.g.,
 //! hold it pressed against a table with your finger).
 //!
+//! # Fault Recovery
+//!
+//! The driver enables `EMBEDDED_MODE` which allows automatic fault clearing
+//! when the device enters IDLE state. If a fault occurs (e.g., from an unloaded
+//! actuator), the example recovers by briefly disabling and re-enabling the
+//! device, which triggers the auto-clear mechanism.
+//!
 //! # WIDEBAND vs FREQUENCY_TRACK
 //!
 //! - **FREQUENCY_TRACK**: Locks onto the LRA's resonant frequency (~170 Hz) for
@@ -121,10 +128,18 @@ async fn main(_spawner: Spawner) {
 
         info!("Melody complete!");
 
-        // Check for errors
+        // Check for errors and recover if needed
+        // EMBEDDED_MODE is enabled, so faults auto-clear when going to IDLE.
         let (events, warnings, _) = haptics.get_events().await.unwrap();
         if events.E_ACTUATOR_FAULT() {
-            warn!("ACTUATOR FAULT - Is the actuator loaded?");
+            warn!("ACTUATOR FAULT - Is the actuator loaded? Auto-recovering...");
+
+            // Disable to enter IDLE state (triggers auto-clear via EMBEDDED_MODE)
+            haptics.disable().await.unwrap();
+            Timer::after_millis(50).await;
+            haptics.enable().await.unwrap();
+
+            info!("Recovery complete - melody will resume when actuator is loaded");
         }
         if events.E_WARNING() {
             warn!("Warning: {:?}", warnings);

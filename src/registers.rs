@@ -181,8 +181,11 @@ pub struct TOP_CFG1 {
     pub BEMF_SENSE_EN: bool,
     #[bits(1)]
     pub ACTUATOR_TYPE: u8,
-    #[bits(2)]
+    #[bits(1)]
     __: u8,
+    /// Embedded operation enable (self-clearing faults).
+    /// When enabled, DA7280 automatically clears faults when entering IDLE state.
+    pub EMBEDDED_MODE: bool,
 }
 
 /// TOP_CFG2 register (0x14)
