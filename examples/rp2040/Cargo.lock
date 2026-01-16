@@ -211,7 +211,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "da728x-rp2040-example"
+name = "da728x-rp2040-examples"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
