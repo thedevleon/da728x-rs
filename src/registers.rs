@@ -282,6 +282,13 @@ pub struct GPI_CTL {
     __: u8,
 }
 
+/// MEM_CTL1 register (0x2C)
+#[bitfield(u8)]
+pub struct MEM_CTL1 {
+    #[bits(8, access = RO)]
+    pub WAV_MEM_BASE_ADDR: u8,
+}
+
 /// MEM_CTL2 register (0x2D)
 #[bitfield(u8)]
 pub struct MEM_CTL2 {
