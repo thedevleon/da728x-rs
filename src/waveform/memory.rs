@@ -212,17 +212,19 @@ impl WaveformMemoryBuilder {
         pos += 1;
 
         // Calculate end pointers
-        // Pointers are relative to the start of the data area
-        // (after header and pointer bytes)
+        // End pointers are ABSOLUTE indices pointing to the LAST byte of each
+        // snippet/sequence within the entire memory array.
         let num_pointers = self.num_snippets as usize + self.num_sequences as usize;
         let data_area_start = 2 + num_pointers;
 
-        // Calculate snippet end pointers
+        // Calculate snippet end pointers (absolute index of last byte)
         let mut current_offset = 0usize;
         for i in 0..self.num_snippets as usize {
             if let Some(ref snippet) = self.snippets[i] {
                 current_offset += snippet.byte_len();
-                data[pos] = current_offset as u8;
+                // End pointer = data_area_start + bytes_used - 1 (index of last byte)
+                let end_ptr = data_area_start + current_offset - 1;
+                data[pos] = end_ptr as u8;
                 pos += 1;
             }
         }
@@ -231,7 +233,8 @@ impl WaveformMemoryBuilder {
         for i in 0..self.num_sequences as usize {
             if let Some(ref sequence) = self.sequences[i] {
                 current_offset += sequence.byte_len();
-                data[pos] = current_offset as u8;
+                let end_ptr = data_area_start + current_offset - 1;
+                data[pos] = end_ptr as u8;
                 pos += 1;
             }
         }
@@ -299,11 +302,11 @@ mod tests {
         // Layout:
         // [0] = 1 (num snippets)
         // [1] = 1 (num sequences)
-        // [2] = 2 (end pointer for snippet 1: offset 2 in data area)
-        // [3] = 3 (end pointer for sequence 0: offset 3 in data area)
+        // [2] = 5 (end pointer for snippet 1: last byte at index 5)
+        // [3] = 6 (end pointer for sequence 0: last byte at index 6)
         // [4] = 0x8F (snippet point 1: ramp, 1 timebase, amp 15)
         // [5] = 0x80 (snippet point 2: ramp, 1 timebase, amp 0)
-        // [6] = 0x61 (frame: gain=full, timebase=0, snp_id=1)
+        // [6] = 0x01 (frame: gain=Full(0), timebase=0, snp_id=1)
         assert_eq!(memory.len(), 7);
         assert_eq!(memory.num_snippets(), 1);
         assert_eq!(memory.num_sequences(), 1);
@@ -311,11 +314,11 @@ mod tests {
         let bytes = memory.as_bytes();
         assert_eq!(bytes[0], 1); // num_snippets
         assert_eq!(bytes[1], 1); // num_sequences
-        assert_eq!(bytes[2], 2); // snippet end pointer
-        assert_eq!(bytes[3], 3); // sequence end pointer
+        assert_eq!(bytes[2], 5); // snippet end pointer (absolute index of last byte)
+        assert_eq!(bytes[3], 6); // sequence end pointer (absolute index of last byte)
         assert_eq!(bytes[4], 0x8F); // snippet data
         assert_eq!(bytes[5], 0x80);
-        assert_eq!(bytes[6], 0x61); // sequence data
+        assert_eq!(bytes[6], 0x01); // sequence data (gain=Full(0), timebase=0, snp_id=1)
     }
 
     #[test]
@@ -359,10 +362,11 @@ mod tests {
         // Header
         assert_eq!(bytes[0], 2); // num_snippets
         assert_eq!(bytes[1], 1); // num_sequences
-        // End pointers
-        assert_eq!(bytes[2], 1); // snippet 1 ends at offset 1
-        assert_eq!(bytes[3], 3); // snippet 2 ends at offset 3
-        assert_eq!(bytes[4], 5); // sequence ends at offset 5
+        // End pointers (absolute indices)
+        // Data starts at byte 5 (2 header + 3 pointers)
+        assert_eq!(bytes[2], 5); // snippet 1 (1 byte at pos 5) ends at index 5
+        assert_eq!(bytes[3], 7); // snippet 2 (2 bytes at pos 6-7) ends at index 7
+        assert_eq!(bytes[4], 9); // sequence (2 bytes at pos 8-9) ends at index 9
     }
 
     #[test]

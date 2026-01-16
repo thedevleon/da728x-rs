@@ -22,6 +22,7 @@ use registers::{CHIP_REV, ACTUATOR1, ACTUATOR2, ACTUATOR3, TOP_CTL1, TOP_CFG1, C
 use crate::registers::MEM_CTL2;
 use crate::registers::SEQ_CTL1;
 use crate::registers::SEQ_CTL2;
+use crate::registers::TOP_CFG2;
 use crate::registers::TOP_CFG4;
 use crate::registers::TOP_CTL2;
 use crate::waveform::WaveformMemory;
@@ -157,6 +158,17 @@ where
         .with_RAPID_STOP_EN(rapid_stop_en)
         .with_AMP_PID_EN(false); // Only supported with ERMs, disable for now.
         self.write_register(Register::TOP_CFG1, top_cfg1.into()).await?;
+
+        // TOP_CFG2 - MEM_DATA_SIGNED must match acceleration config:
+        // MEM_DATA_SIGNED = 1 when ACCELERATION_EN = 0
+        // MEM_DATA_SIGNED = 0 when ACCELERATION_EN = 1
+        // Read-modify-write to preserve FULL_BRAKE_THR
+        let top_cfg2_val = self.read_register(Register::TOP_CFG2).await?;
+        let top_cfg2 = TOP_CFG2::from(top_cfg2_val)
+            .with_MEM_DATA_SIGNED(!acceleration_en);
+        #[cfg(feature = "debug")]
+        debug!("TOP_CFG2: accel_en={}, MEM_DATA_SIGNED={}, val={:02X}", acceleration_en, !acceleration_en, u8::from(top_cfg2));
+        self.write_register(Register::TOP_CFG2, top_cfg2.into()).await?;
 
         // ACTUATOR1 (nom max volt)
         let volt_converted = ((actuator_config.nominal_max_mV as u32 * 1000) / 23400) as u8;
@@ -304,16 +316,25 @@ where
     }
 
     /// Enable the configured operation mode
+    ///
+    /// Note: For RTWM/ETWM modes, this enables the mode but does NOT start sequence playback.
+    /// Call `play_sequence()` or `start_sequence()` separately after enabling.
     pub async fn enable(&mut self) -> Result<(), Error> {
         if self.actuator_config.is_none() || self.device_config.is_none() {
             return Err(Error::NotConfigured);
         }
         let device_config = self.device_config.unwrap();
 
-        let mut top_ctl1 = TOP_CTL1::from(self.read_register(Register::TOP_CTL1).await?);
+        // Build new TOP_CTL1 value - explicitly clear SEQ_START to avoid
+        // accidentally starting a sequence before memory is ready
+        let top_ctl1 = TOP_CTL1::new()
+            .with_OPERATION_MODE(device_config.operation_mode as u8)
+            .with_STANDBY_EN(false)
+            .with_SEQ_START(false);
+
         #[cfg(feature = "debug")]
         debug!("TOP_CTL1: {:?}", top_ctl1);
-        top_ctl1 = top_ctl1.with_OPERATION_MODE(device_config.operation_mode as u8);
+
         self.write_register(Register::TOP_CTL1, top_ctl1.into()).await?;
 
         Ok(())
@@ -368,7 +389,7 @@ where
             .map_err(|e| Error::I2c(e.kind()))
     }
 
-    /// Write multiple bytes to consecutive memory addresses starting at MEM_CTL1.
+    /// Write multiple bytes to consecutive memory addresses starting at SNP_MEM_0.
     ///
     /// This is used for uploading waveform memory data.
     async fn write_memory_bytes(&mut self, data: &[u8]) -> Result<(), Error> {
@@ -383,8 +404,9 @@ where
 
             // Create buffer with register address followed by data
             // We use a fixed-size buffer since we're no_std
+            // Waveform memory starts at SNP_MEM_0 (0x84)
             let mut buffer = [0u8; CHUNK_SIZE + 1];
-            buffer[0] = Register::MEM_CTL1 as u8 + offset as u8;
+            buffer[0] = Register::SNP_MEM_0 as u8 + offset as u8;
             buffer[1..1 + chunk.len()].copy_from_slice(chunk);
 
             self.i2c
@@ -401,16 +423,18 @@ where
     /// Unlock waveform memory for writing.
     ///
     /// Must be called before uploading waveform memory.
+    /// Per datasheet: WAV_MEM_LOCK = 1 means unlocked, 0 means locked.
     pub async fn unlock_waveform_memory(&mut self) -> Result<(), Error> {
-        let mem_ctl2 = MEM_CTL2::new().with_WAV_MEM_LOCK(false);
+        let mem_ctl2 = MEM_CTL2::new().with_WAV_MEM_LOCK(true); // 1 = unlocked
         self.write_register(Register::MEM_CTL2, mem_ctl2.into()).await
     }
 
     /// Lock waveform memory to prevent accidental writes.
     ///
     /// Should be called after uploading waveform memory.
+    /// Per datasheet: WAV_MEM_LOCK = 0 means locked, 1 means unlocked.
     pub async fn lock_waveform_memory(&mut self) -> Result<(), Error> {
-        let mem_ctl2 = MEM_CTL2::new().with_WAV_MEM_LOCK(true);
+        let mem_ctl2 = MEM_CTL2::new().with_WAV_MEM_LOCK(false); // 0 = locked
         self.write_register(Register::MEM_CTL2, mem_ctl2.into()).await
     }
 
@@ -439,6 +463,28 @@ where
         }
 
         Ok(())
+    }
+
+    /// Read back waveform memory contents.
+    ///
+    /// # Arguments
+    /// * `len` - Number of bytes to read (max 100)
+    /// * `buffer` - Buffer to store the read data
+    ///
+    /// # Returns
+    /// Number of bytes actually read.
+    pub async fn read_waveform_memory(&mut self, len: usize, buffer: &mut [u8]) -> Result<usize, Error> {
+        let read_len = len.min(100).min(buffer.len());
+        for i in 0..read_len {
+            let addr = Register::SNP_MEM_0 as u8 + i as u8;
+            let mut data = [0u8; 1];
+            self.i2c
+                .write_read(self.address, &[addr], &mut data)
+                .await
+                .map_err(|e| Error::I2c(e.kind()))?;
+            buffer[i] = data[0];
+        }
+        Ok(read_len)
     }
 
     /// Select a sequence for playback.

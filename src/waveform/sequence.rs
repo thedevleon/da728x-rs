@@ -51,7 +51,7 @@ impl Sequence {
 /// use da728x::waveform::{SequenceBuilder, FrameBuilder, Timebase};
 ///
 /// let frame1 = FrameBuilder::new(1)?.timebase(Timebase::Ms5_44).build()?;
-/// let frame2 = FrameBuilder::new(2)?.timebase(Timebase::Ms10_88).build()?;
+/// let frame2 = FrameBuilder::new(2)?.timebase(Timebase::Ms21_76).build()?;
 ///
 /// let sequence = SequenceBuilder::new()
 ///     .add_frame(frame1)?
@@ -178,6 +178,6 @@ mod tests {
         let mut buffer = [0u8; 4];
         let len = sequence.encode_into(&mut buffer);
         assert_eq!(len, 1);
-        assert_eq!(buffer[0], 0x61); // Default gain=Full, timebase=0, snp_id=1
+        assert_eq!(buffer[0], 0x01); // Default gain=Full(0), timebase=0, snp_id=1
     }
 }
