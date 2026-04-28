@@ -512,6 +512,11 @@
       </select>
     </label>
   </div>
+  <div class="config" id="ble-header" style="display:none; gap:8px;">
+    <button class="small primary" id="btn-ble-connect">Connect BLE</button>
+    <button class="small danger" id="btn-ble-disconnect" style="display:none;">Disconnect</button>
+    <span id="ble-status" class="meta">Disconnected</span>
+  </div>
 </header>
 
 <main>
@@ -630,6 +635,24 @@
       <div class="body" id="editor-body">
         <canvas class="preview" id="preview-canvas" height="160"></canvas>
         <p class="help" id="preview-help" style="margin-top: 8px;">Select a snippet or sequence from the left to start editing. The preview is approximate — actual LRA response depends on mechanical characteristics.</p>
+      </div>
+    </section>
+    <!-- RIGHT: BLE CONTROLS -->
+    <section class="card" id="ble-card">
+      <header>
+        <h2>Bluetooth</h2>
+        <span class="meta" id="ble-card-status">Not connected</span>
+      </header>
+      <div class="body" id="ble-card-body">
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="primary small" id="btn-ble-connect-card">Connect</button>
+          <button class="small danger" id="btn-ble-disconnect-card" style="display:none;">Disconnect</button>
+          <button class="small" id="btn-ble-upload" style="display:none;">Upload Waveform</button>
+          <button class="small ghost" id="btn-ble-refresh" style="display:none;">Refresh Status</button>
+        </div>
+        <div id="ble-sequences">
+          <p class="empty-state">Connect to a DA728x Haptics device to upload and play sequences.</p>
+        </div>
       </div>
     </section>
   </div>
@@ -1127,6 +1150,9 @@ function renderAll() {
   renderValidation(layout);
   renderExports(layout);
   updateMeters();
+  if (bleServer && bleServer.connected) {
+    renderBleSequenceButtons(document.getElementById('ble-sequences'));
+  }
 }
 
 function renderSnippetTiles() {
@@ -2440,6 +2466,200 @@ document.querySelectorAll('.tab').forEach(btn => {
 });
 
 window.addEventListener('resize', () => renderPreview());
+
+// ============================================================================
+// BLUETOOTH (Web Bluetooth API)
+// ============================================================================
+
+const HAPTICS_SERVICE_UUID = 'DA728000-0000-1000-8000-00805F9B34FB';
+const WAVEFORM_DATA_CHAR_UUID = 'DA728001-0000-1000-8000-00805F9B34FB';
+const WAVEFORM_CONTROL_CHAR_UUID = 'DA728002-0000-1000-8000-00805F9B34FB';
+const STATUS_CHAR_UUID = 'DA728003-0000-1000-8000-00805F9B34FB';
+
+const CMD_START_UPLOAD = 0x01;
+const CMD_PLAY = 0x02;
+const CMD_COMMIT = 0x03;
+const CMD_ENABLE = 0x04;
+const CMD_DISABLE = 0x05;
+
+const STATUS_READY = 0x01;
+const STATUS_UPLOADING = 0x02;
+const STATUS_UPLOAD_COMPLETE = 0x04;
+const STATUS_ERROR = 0x08;
+
+let bleDevice = null;
+let bleServer = null;
+let bleService = null;
+let bleChars = {};
+
+function isBleAvailable() {
+  return typeof navigator !== 'undefined' && navigator.bluetooth;
+}
+
+function updateBleUI() {
+  const connected = !!(bleServer && bleServer.connected);
+  const statusText = connected ? 'Connected' : 'Disconnected';
+  document.getElementById('ble-status').textContent = statusText;
+  document.getElementById('ble-card-status').textContent = statusText;
+
+  document.getElementById('btn-ble-connect').style.display = connected ? 'none' : 'inline-block';
+  document.getElementById('btn-ble-disconnect').style.display = connected ? 'inline-block' : 'none';
+  document.getElementById('btn-ble-connect-card').style.display = connected ? 'none' : 'inline-block';
+  document.getElementById('btn-ble-disconnect-card').style.display = connected ? 'inline-block' : 'none';
+  document.getElementById('btn-ble-upload').style.display = connected ? 'inline-block' : 'none';
+  document.getElementById('btn-ble-refresh').style.display = connected ? 'inline-block' : 'none';
+
+  const seqContainer = document.getElementById('ble-sequences');
+  if (connected) {
+    renderBleSequenceButtons(seqContainer);
+  } else {
+    seqContainer.innerHTML = '<p class="empty-state">Connect to a DA728x Haptics device to upload and play sequences.</p>';
+  }
+}
+
+function renderBleSequenceButtons(container) {
+  if (state.sequences.length === 0) {
+    container.innerHTML = '<p class="empty-state">No sequences to play. Create sequences in the editor.</p>';
+    return;
+  }
+  let html = '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">';
+  state.sequences.forEach((_, i) => {
+    html += `<button class="small" onclick="playBleSequence(${i}, 0)">Play SEQ_${i}</button>`;
+  });
+  html += '</div>';
+  html += '<div style="margin-top:8px; color:var(--muted); font-size:11px;">Click a button to play the sequence once on the connected device.</div>';
+  container.innerHTML = html;
+}
+
+async function connectBle() {
+  if (!isBleAvailable()) {
+    toast('Web Bluetooth not supported in this browser', 'err');
+    return;
+  }
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'DA728x Haptics' }],
+      optionalServices: [HAPTICS_SERVICE_UUID]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
+    bleServer = await bleDevice.gatt.connect();
+    bleService = await bleServer.getPrimaryService(HAPTICS_SERVICE_UUID);
+    bleChars.data = await bleService.getCharacteristic(WAVEFORM_DATA_CHAR_UUID);
+    bleChars.control = await bleService.getCharacteristic(WAVEFORM_CONTROL_CHAR_UUID);
+    bleChars.status = await bleService.getCharacteristic(STATUS_CHAR_UUID);
+    toast('Connected to DA728x Haptics', 'ok');
+    updateBleUI();
+    // Enable haptics on connect
+    await bleChars.control.writeValueWithResponse(new Uint8Array([CMD_ENABLE]));
+  } catch (e) {
+    toast('BLE connection failed: ' + e.message, 'err');
+    console.error(e);
+  }
+}
+
+function onBleDisconnected() {
+  bleDevice = null;
+  bleServer = null;
+  bleService = null;
+  bleChars = {};
+  toast('BLE disconnected', 'warn');
+  updateBleUI();
+}
+
+async function disconnectBle() {
+  try {
+    if (bleServer && bleServer.connected) {
+      await bleChars.control.writeValueWithResponse(new Uint8Array([CMD_DISABLE]));
+      bleServer.disconnect();
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  onBleDisconnected();
+}
+
+async function uploadWaveformToDevice() {
+  if (!bleChars.control || !bleChars.data) {
+    toast('Not connected', 'err');
+    return;
+  }
+  const layout = layoutMemory();
+  if (layout.overflow > 0) {
+    toast('Cannot upload: memory overflows 100 bytes', 'err');
+    return;
+  }
+  if (layout.totalUsed === 0) {
+    toast('Cannot upload: waveform memory is empty', 'err');
+    return;
+  }
+  const bytes = layout.mem.slice(0, layout.totalUsed);
+  try {
+    // Start upload
+    await bleChars.control.writeValueWithResponse(new Uint8Array([CMD_START_UPLOAD, bytes.length]));
+    // Send chunks: [offset, data...]
+    const CHUNK_DATA_SIZE = 19; // 1 byte offset + up to 19 bytes data (fits in 20-byte characteristic)
+    for (let offset = 0; offset < bytes.length; offset += CHUNK_DATA_SIZE) {
+      const chunk = bytes.slice(offset, offset + CHUNK_DATA_SIZE);
+      const packet = new Uint8Array(1 + chunk.length);
+      packet[0] = offset;
+      packet.set(chunk, 1);
+      await bleChars.data.writeValueWithResponse(packet);
+    }
+    // Commit
+    await bleChars.control.writeValueWithResponse(new Uint8Array([CMD_COMMIT]));
+    toast(`Uploaded ${bytes.length} bytes`, 'ok');
+  } catch (e) {
+    toast('Upload failed: ' + e.message, 'err');
+    console.error(e);
+  }
+}
+
+async function playBleSequence(seqId, loops) {
+  if (!bleChars.control) {
+    toast('Not connected', 'err');
+    return;
+  }
+  try {
+    await bleChars.control.writeValueWithResponse(new Uint8Array([CMD_PLAY, seqId, loops]));
+    toast(`Playing SEQ_${seqId}`, 'ok');
+  } catch (e) {
+    toast('Play failed: ' + e.message, 'err');
+    console.error(e);
+  }
+}
+
+async function readDeviceStatus() {
+  if (!bleChars.status) {
+    toast('Not connected', 'err');
+    return;
+  }
+  try {
+    const value = await bleChars.status.readValue();
+    const status = value.getUint8(0);
+    let msgs = [];
+    if (status & STATUS_READY) msgs.push('READY');
+    if (status & STATUS_UPLOADING) msgs.push('UPLOADING');
+    if (status & STATUS_UPLOAD_COMPLETE) msgs.push('COMPLETE');
+    if (status & STATUS_ERROR) msgs.push('ERROR');
+    toast('Status: ' + (msgs.join(', ') || 'UNKNOWN'), 'ok');
+  } catch (e) {
+    toast('Status read failed: ' + e.message, 'err');
+    console.error(e);
+  }
+}
+
+// Wire BLE buttons
+document.getElementById('btn-ble-connect').onclick = connectBle;
+document.getElementById('btn-ble-disconnect').onclick = disconnectBle;
+document.getElementById('btn-ble-connect-card').onclick = connectBle;
+document.getElementById('btn-ble-disconnect-card').onclick = disconnectBle;
+document.getElementById('btn-ble-upload').onclick = uploadWaveformToDevice;
+document.getElementById('btn-ble-refresh').onclick = readDeviceStatus;
+
+// Show BLE header if supported
+if (isBleAvailable()) {
+  document.getElementById('ble-header').style.display = 'flex';
+}
 
 // Initial render
 renderAll();
