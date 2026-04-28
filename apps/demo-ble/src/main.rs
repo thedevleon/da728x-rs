@@ -6,7 +6,8 @@ use defmt::unwrap;
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_nrf::config::{self, ClockSpeed, HfclkSource, LfclkSource};
-use embassy_nrf::cracen::{self, Blocking};
+use embassy_nrf::cracen::{self};
+use embassy_nrf::mode::Blocking;
 use embassy_nrf::twim::{self, Twim};
 use embassy_nrf::{bind_interrupts, peripherals};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
@@ -167,7 +168,7 @@ async fn main(spawner: Spawner) {
     };
     static MPSL: StaticCell<MultiprotocolServiceLayer> = StaticCell::new();
     let mpsl = MPSL.init(unwrap!(mpsl::MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg)));
-    spawner.spawn(unwrap!(mpsl_task(&*mpsl)));
+    unwrap!(spawner.spawn(mpsl_task(&*mpsl)));
 
     // --- SDC ---
     let sdc_p = sdc::Peripherals::new(
@@ -180,7 +181,10 @@ async fn main(spawner: Spawner) {
         p.PPI10_CH5,
         p.PPI10_CH6,
         p.PPI10_CH7,
-        p.PPI20_CH0,
+        p.PPI10_CH8,
+        p.PPI10_CH9,
+        p.PPI10_CH10,
+        p.PPI10_CH11,
         p.PPIB00_CH1,
         p.PPIB00_CH2,
         p.PPIB00_CH3,
@@ -224,10 +228,9 @@ async fn main(spawner: Spawner) {
         ..
     } = stack.build();
 
-    static APPEARANCE: [u8; 2] = [0x00, 0x00];
     let server = unwrap!(HapticsServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
         name: "DA728x Haptics",
-        appearance: &APPEARANCE,
+        appearance: &appearance::UNKNOWN,
     })));
 
     // Run BLE host task concurrently with application logic
@@ -239,14 +242,14 @@ async fn main(spawner: Spawner) {
                     let a = gatt_events_task(&server, &conn, &mut haptics, upload_state);
                     let b = connection_keepalive();
                     match select(a, b).await {
-                        Either::Left(Ok(())) => info!("[main] gatt task ended"),
-                        Either::Left(Err(e)) => warn!("[main] gatt error: {:?}", e),
-                        Either::Right(()) => info!("[main] keepalive ended"),
+                        Either::First(Ok(())) => info!("[main] gatt task ended"),
+                        Either::First(Err(e)) => warn!("[main] gatt error: {:?}", e),
+                        Either::Second(()) => info!("[main] keepalive ended"),
                     }
                 }
                 Err(e) => {
                     let e = defmt::Debug2Format(&e);
-                    panic!("[adv] error: {:?}", e);
+                    core::panic!("[adv] error: {:?}", e);
                 }
             }
         }
@@ -262,7 +265,7 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     loop {
         if let Err(e) = runner.run().await {
             let e = defmt::Debug2Format(&e);
-            panic!("[ble_task] error: {:?}", e);
+            core::panic!("[ble_task] error: {:?}", e);
         }
     }
 }
@@ -317,7 +320,7 @@ async fn connection_keepalive() {
 async fn gatt_events_task(
     server: &HapticsServer<'_>,
     conn: &GattConnection<'_, '_, DefaultPacketPool>,
-    driver: &mut DA728x<Twim<'static, peripherals::SERIAL20>>,
+    driver: &mut DA728x<Twim<'static>>,
     upload_state: &'static Mutex<NoopRawMutex, UploadState>,
 ) -> Result<(), Error> {
     let waveform_data = server.haptics.waveform_data;

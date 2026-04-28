@@ -23,6 +23,30 @@ pub enum Error {
     EmptySequence,
 }
 
+#[cfg(feature = "debug")]
+impl defmt::Format for Error {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            Error::I2c(err) => defmt::write!(f, "I2C error: {}", defmt::Debug2Format(err)),
+            Error::Gpio(err) => defmt::write!(f, "GPIO error: {}", defmt::Debug2Format(err)),
+            Error::VariantMismatch => defmt::write!(f, "Variant does not match chip ID"),
+            Error::InvalidValue => defmt::write!(f, "Invalid value, most likely out of range."),
+            Error::NotConfigured => defmt::write!(f, "Configuration has not beed set yet."),
+            Error::WrongMode => defmt::write!(f, "Driver is not in the right mode to support this operation"),
+            Error::WaveformMemoryFull => defmt::write!(f, "Waveform memory exceeds 100 bytes"),
+            Error::TooManySnippets => defmt::write!(f, "Too many snippets (max 15)"),
+            Error::TooManySequences => defmt::write!(f, "Too many sequences (max 16)"),
+            Error::InvalidSnippetId => defmt::write!(f, "Invalid snippet ID"),
+            Error::InvalidTimebase => defmt::write!(f, "Invalid timebase value"),
+            Error::InvalidAmplitude => defmt::write!(f, "Invalid amplitude value"),
+            Error::InvalidFrequency => defmt::write!(f, "Invalid frequency value"),
+            Error::InvalidLoopCount => defmt::write!(f, "Invalid loop count"),
+            Error::EmptySnippet => defmt::write!(f, "Snippet must contain at least one point"),
+            Error::EmptySequence => defmt::write!(f, "Sequence must contain at least one frame"),
+        }
+    }
+}
+
 impl Display for Error
 {
     fn fmt(&self, f: &mut Formatter) -> Result {

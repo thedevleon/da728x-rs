@@ -19,13 +19,13 @@ defmt = "1.0"
 defmt-rtt = "1.0"
 panic-probe = { version = "1.0", features = ["print-defmt"] }
 
-cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m = { version = "0.7", features = ["inline-asm"] }
 cortex-m-rt = "0.7"
 
 portable-atomic = "1"
 static_cell = "2"
 
-trouble-host = { version = "0.6.0", features = ["derive", "gatt", "peripheral", "default-packet-pool"] }
+trouble-host = { version = "0.6.0", features = ["derive", "gatt", "peripheral", "default-packet-pool", "defmt"] }
 bt-hci = { version = "0.8", default-features = false, features = ["defmt"] }
 nrf-sdc = { path = "../../../nrf-sdc/nrf-sdc", default-features = false, features = ["defmt", "peripheral", "nrf54l15-app-s"] }
 nrf-mpsl = { path = "../../../nrf-sdc/nrf-mpsl", default-features = false, features = ["defmt", "critical-section-impl"] }
