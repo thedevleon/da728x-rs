@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DA728x BLE Haptics Demo</title>
+  <style>
+    :root {
+      --bg: #0f0f13;
+      --fg: #e0e0e0;
+      --muted: #888;
+      --accent: #4fc3f7;
+      --accent-dim: #0288d1;
+      --danger: #ef5350;
+      --success: #66bb6a;
+      --panel: #1a1a20;
+      --border: #2a2a35;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.45;
+    }
+    header {
+      padding: 1.25rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    header p { margin: .25rem 0 0; color: var(--muted); font-size: .9rem; }
+    main { max-width: 720px; margin: 0 auto; padding: 1rem; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    h2 { margin: 0 0 .5rem; font-size: 1rem; color: var(--accent); }
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+    .row > * { flex: 1 1 auto; }
+    label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .25rem; }
+    input, textarea, button, select {
+      font: inherit;
+      color: inherit;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .5rem .6rem;
+    }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-dim); }
+    textarea { width: 100%; min-height: 6rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    button {
+      cursor: pointer;
+      background: var(--accent-dim);
+      border-color: var(--accent-dim);
+      color: #fff;
+      font-weight: 600;
+      min-width: 6rem;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+    button.secondary { background: transparent; color: var(--fg); border-color: var(--border); }
+    button.danger { background: var(--danger); border-color: var(--danger); }
+    button.success { background: var(--success); border-color: var(--success); }
+    .badge {
+      display: inline-block;
+      padding: .15rem .45rem;
+      border-radius: 999px;
+      font-size: .75rem;
+      font-weight: 600;
+      background: var(--border);
+      color: var(--muted);
+    }
+    .badge.ok { background: rgba(102,187,106,.15); color: var(--success); }
+    .badge.err { background: rgba(239,83,80,.15); color: var(--danger); }
+    .badge.warn { background: rgba(255,167,38,.15); color: #ffa726; }
+    .grid { display: grid; gap: .75rem; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 520px) {
+      .grid.two, .grid.three { grid-template-columns: 1fr; }
+    }
+    .hint { font-size: .8rem; color: var(--muted); margin-top: .35rem; }
+    #log {
+      background: #0b0b0f;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .6rem .8rem;
+      height: 14rem;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: .85rem;
+      white-space: pre-wrap;
+    }
+    .log-time { color: var(--muted); }
+    .log-info { color: var(--fg); }
+    .log-ok { color: var(--success); }
+    .log-err { color: var(--danger); }
+    .log-warn { color: #ffa726; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DA728x BLE Haptics Demo</h1>
+    <p>Web Bluetooth client for the DA728x Haptics GATT service</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>Connection</h2>
+      <div class="row">
+        <button id="btnConnect">Connect</button>
+        <button id="btnDisconnect" class="secondary" disabled>Disconnect</button>
+        <span id="connState" class="badge">Disconnected</span>
+      </div>
+      <p class="hint">Filter: name = <code>DA728x Haptics</code>, service = <code>DA728000-0000-1000-8000-00805F9B34FB</code></p>
+    </section>
+
+    <section>
+      <h2>Status</h2>
+      <div class="row">
+        <button id="btnReadStatus" disabled>Read Status</button>
+        <span id="statusValue" class="badge">—</span>
+      </div>
+      <p class="hint">0x01 Ready · 0x02 Uploading · 0x04 Upload Complete · 0x08 Error</p>
+    </section>
+
+    <section>
+      <h2>Waveform Upload</h2>
+      <label for="hexInput">Waveform memory (hex, max 100 bytes)</label>
+      <textarea id="hexInput" placeholder="Paste 100 bytes as hex, e.g. 01 01 04 05 ..."></textarea>
+      <p class="hint">Generate this with the <a href="../../waveform-builder/waveform_builder.html" target="_blank">Waveform Builder</a> or paste a pre-built image.</p>
+      <div class="row" style="margin-top:.5rem">
+        <button id="btnUpload" disabled>Upload</button>
+        <button id="btnLoadExample" class="secondary">Load Example</button>
+        <button id="btnClear" class="secondary">Clear</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Playback</h2>
+      <div class="grid two">
+        <div>
+          <label for="seqId">Sequence ID</label>
+          <input id="seqId" type="number" min="0" max="15" value="0">
+        </div>
+        <div>
+          <label for="loops">Loop count (device plays loops+1)</label>
+          <input id="loops" type="number" min="0" max="255" value="0">
+        </div>
+      </div>
+      <div class="row" style="margin-top:.5rem">
+        <button id="btnPlay" disabled>Play</button>
+        <button id="btnEnable" class="success" disabled>Enable</button>
+        <button id="btnDisable" class="danger" disabled>Disable</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Log</h2>
+      <div id="log"></div>
+      <div class="row" style="margin-top:.5rem; justify-content:flex-end;">
+        <button id="btnClearLog" class="secondary">Clear Log</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const SVC_UUID         = 'DA728000-0000-1000-8000-00805F9B34FB';
+    const CHAR_WAVEFORM_DATA    = 'DA728001-0000-1000-8000-00805F9B34FB';
+    const CHAR_WAVEFORM_CONTROL = 'DA728002-0000-1000-8000-00805F9B34FB';
+    const CHAR_STATUS           = 'DA728003-0000-1000-8000-00805F9B34FB';
+
+    const CMD_START_UPLOAD = 0x01;
+    const CMD_PLAY         = 0x02;
+    const CMD_COMMIT       = 0x03;
+    const CMD_ENABLE       = 0x04;
+    const CMD_DISABLE      = 0x05;
+
+    const STATUS_READY           = 0x01;
+    const STATUS_UPLOADING       = 0x02;
+    const STATUS_UPLOAD_COMPLETE = 0x04;
+    const STATUS_ERROR           = 0x08;
+
+    let device = null;
+    let server = null;
+    let service = null;
+    let chWaveformData = null;
+    let chWaveformControl = null;
+    let chStatus = null;
+
+    const $ = (sel) => document.querySelector(sel);
+    const setDisabled = (ids, v) => ids.forEach(id => $(id).disabled = v);
+    const fmtHex = (arr) => Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join(' ');
+
+    function log(msg, cls='log-info') {
+      const t = new Date().toLocaleTimeString('en-GB', { hour12: false });
+      const line = document.createElement('div');
+      line.innerHTML = `<span class="log-time">[${t}]</span> <span class="${cls}">${msg}</span>`;
+      $('#log').appendChild(line);
+      $('#log').scrollTop = $('#log').scrollHeight;
+    }
+
+    function parseHex(str) {
+      const cleaned = str.replace(/[^0-9a-fA-F]/g, '');
+      if (cleaned.length % 2 !== 0) throw new Error('Hex string has odd length');
+      const out = new Uint8Array(cleaned.length / 2);
+      for (let i = 0; i < out.length; i++) {
+        out[i] = parseInt(cleaned.substr(i * 2, 2), 16);
+      }
+      return out;
+    }
+
+    function statusName(v) {
+      switch (v) {
+        case STATUS_READY: return 'Ready';
+        case STATUS_UPLOADING: return 'Uploading';
+        case STATUS_UPLOAD_COMPLETE: return 'Upload Complete';
+        case STATUS_ERROR: return 'Error';
+        default: return `Unknown (0x${v.toString(16).padStart(2,'0')})`;
+      }
+    }
+
+    async function connect() {
+      try {
+        if (!navigator.bluetooth) {
+          log('Web Bluetooth is not supported in this browser. Use Chrome/Edge.', 'log-err');
+          return;
+        }
+        log('Requesting BLE device...');
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'DA728x Haptics' }],
+          optionalServices: [SVC_UUID]
+        });
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+        log('Connecting to GATT server...');
+        server = await device.gatt.connect();
+        service = await server.getPrimaryService(SVC_UUID);
+        chWaveformData    = await service.getCharacteristic(CHAR_WAVEFORM_DATA);
+        chWaveformControl = await service.getCharacteristic(CHAR_WAVEFORM_CONTROL);
+        chStatus          = await service.getCharacteristic(CHAR_STATUS);
+        log('Connected and discovered characteristics.', 'log-ok');
+        $('#connState').textContent = 'Connected';
+        $('#connState').classList.add('ok');
+        setDisabled(['#btnConnect'], true);
+        setDisabled(['#btnDisconnect','#btnReadStatus','#btnUpload','#btnPlay','#btnEnable','#btnDisable'], false);
+      } catch (e) {
+        log('Connect failed: ' + e.message, 'log-err');
+      }
+    }
+
+    async function disconnect() {
+      try {
+        if (device && device.gatt.connected) {
+          await device.gatt.disconnect();
+        }
+      } catch (e) {
+        log('Disconnect error: ' + e.message, 'log-err');
+      }
+      onDisconnected();
+    }
+
+    function onDisconnected() {
+      device = null; server = null; service = null;
+      chWaveformData = null; chWaveformControl = null; chStatus = null;
+      $('#connState').textContent = 'Disconnected';
+      $('#connState').classList.remove('ok');
+      setDisabled(['#btnConnect'], false);
+      setDisabled(['#btnDisconnect','#btnReadStatus','#btnUpload','#btnPlay','#btnEnable','#btnDisable'], true);
+      log('Disconnected.', 'log-warn');
+    }
+
+    async function readStatus() {
+      try {
+        const val = await chStatus.readValue();
+        const v = val.getUint8(0);
+        const name = statusName(v);
+        $('#statusValue').textContent = `0x${v.toString(16).padStart(2,'0')} — ${name}`;
+        $('#statusValue').className = 'badge ' + (v === STATUS_ERROR ? 'err' : v === STATUS_UPLOAD_COMPLETE ? 'ok' : '');
+        log(`Status: ${name} (0x${v.toString(16).padStart(2,'0')})`);
+      } catch (e) {
+        log('Read status failed: ' + e.message, 'log-err');
+      }
+    }
+
+    async function upload() {
+      try {
+        const bytes = parseHex($('#hexInput').value);
+        if (bytes.length === 0) { log('Nothing to upload.', 'log-warn'); return; }
+        if (bytes.length > 100) { log('Image is >100 bytes, truncating to 100.', 'log-warn'); }
+        const image = bytes.slice(0, 100);
+        const len = image.length;
+
+        log(`Starting upload: ${len} bytes...`);
+        await chWaveformControl.writeValueWithoutResponse(new Uint8Array([CMD_START_UPLOAD, len]));
+        await readStatus();
+
+        let offset = 0;
+        while (offset < len) {
+          const chunkLen = Math.min(19, len - offset);
+          const packet = new Uint8Array(1 + chunkLen);
+          packet[0] = offset;
+          packet.set(image.subarray(offset, offset + chunkLen), 1);
+          await chWaveformData.writeValueWithoutResponse(packet);
+          log(`Wrote ${chunkLen} bytes at offset ${offset}`);
+          offset += chunkLen;
+        }
+
+        log('Committing upload...');
+        await chWaveformControl.writeValueWithoutResponse(new Uint8Array([CMD_COMMIT]));
+        await readStatus();
+        log('Upload complete.', 'log-ok');
+      } catch (e) {
+        log('Upload failed: ' + e.message, 'log-err');
+      }
+    }
+
+    async function play() {
+      try {
+        const seq = parseInt($('#seqId').value, 10) & 0xFF;
+        const loops = parseInt($('#loops').value, 10) & 0xFF;
+        await chWaveformControl.writeValueWithoutResponse(new Uint8Array([CMD_PLAY, seq, loops]));
+        log(`Play sequence ${seq}, loops=${loops} (plays ${loops+1} times)`);
+      } catch (e) {
+        log('Play failed: ' + e.message, 'log-err');
+      }
+    }
+
+    async function enable() {
+      try {
+        await chWaveformControl.writeValueWithoutResponse(new Uint8Array([CMD_ENABLE]));
+        log('Enable output');
+      } catch (e) {
+        log('Enable failed: ' + e.message, 'log-err');
+      }
+    }
+
+    async function disable() {
+      try {
+        await chWaveformControl.writeValueWithoutResponse(new Uint8Array([CMD_DISABLE]));
+        log('Disable output');
+      } catch (e) {
+        log('Disable failed: ' + e.message, 'log-err');
+      }
+    }
+
+    function loadExample() {
+      // Minimal valid waveform memory image:
+      // 1 snippet, 1 sequence
+      // End pointer layout depends on the Rust builder, so this is a placeholder.
+      // Users should replace this with real output from the waveform builder.
+      const example = new Uint8Array([
+        0x01, // 1 snippet
+        0x01, // 1 sequence
+        // Example snippet (single PWL point: RMP=0, TIME=0, AMP=15 => 0x0F)
+        0x0F,
+        // Example sequence frame (GAIN=0, TIMEBASE=0, SNIPPET_ID=1 => 0x01)
+        0x01,
+      ]);
+      $('#hexInput').value = fmtHex(example);
+      log('Loaded minimal example. Replace with a real image from the Waveform Builder for actual playback.', 'log-warn');
+    }
+
+    $('#btnConnect').addEventListener('click', connect);
+    $('#btnDisconnect').addEventListener('click', disconnect);
+    $('#btnReadStatus').addEventListener('click', readStatus);
+    $('#btnUpload').addEventListener('click', upload);
+    $('#btnPlay').addEventListener('click', play);
+    $('#btnEnable').addEventListener('click', enable);
+    $('#btnDisable').addEventListener('click', disable);
+    $('#btnLoadExample').addEventListener('click', loadExample);
+    $('#btnClear').addEventListener('click', () => $('#hexInput').value = '');
+    $('#btnClearLog').addEventListener('click', () => $('#log').innerHTML = '');
+
+    log('Ready. Click Connect to pair with the DA728x Haptics device.');
+  </script>
+</body>
+</html>
