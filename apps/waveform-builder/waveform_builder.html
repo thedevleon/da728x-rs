@@ -498,6 +498,24 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35);
   }
+  /* "unused" chip surfaced on snippet tiles / editor when no sequence
+     references the snippet. Uses the warn-yellow palette so it reads as a
+     hint, not an error. */
+  .chip-unused {
+    display: inline-block;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-family: var(--mono);
+    font-weight: 600;
+    border-radius: 3px;
+    background: rgba(255, 167, 38, 0.18);
+    color: var(--warn);
+    border: 1px solid rgba(255, 167, 38, 0.4);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .tile.snp.unused { opacity: 0.78; }
+  .tile.snp.unused:hover { opacity: 1; }
   .file-drop.dragging { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.05); color: var(--accent); }
   .meter {
     display: flex; align-items: center; gap: 8px;
@@ -1671,6 +1689,16 @@ function validate(layout) {
   if (state.baseAddr < 0x80 || state.baseAddr > 0xFF - MAX_MEM + 1) {
     msgs.push({ level: 'warn', text: `Base address 0x${state.baseAddr.toString(16)} unusual (datasheet default 0x84)` });
   }
+  // Unused snippets — still encoded into memory but never played by any
+  // sequence. Surface as a warn-level hint so users can prune to free up
+  // bytes if they're approaching capacity.
+  const unused = [];
+  for (let i = 0; i < state.snippets.length; i++) {
+    if (!isSnippetUsed(i)) unused.push(`SNP_${i+1} (${snippetName(i)})`);
+  }
+  if (unused.length > 0) {
+    msgs.push({ level: 'warn', text: `${unused.length} unused snippet${unused.length>1?'s':''}: ${unused.join(', ')}` });
+  }
   if (state.snippets.length === 0 && state.sequences.length === 0) {
     msgs.push({ level: 'ok', text: 'Memory empty. Add snippets and sequences to begin.' });
   } else if (msgs.length === 0) {
@@ -1706,14 +1734,20 @@ function renderSnippetTiles() {
     const tile = document.createElement('div');
     tile.className = 'tile snp';
     if (state.selection.type === 'snippet' && state.selection.index === i) tile.classList.add('active');
+    const used = isSnippetUsed(i);
+    if (!used) tile.classList.add('unused');
 
     const nBytes = Math.max(1, s.points.length);
     const totalTb = s.points.reduce((a, p) => a + (p.time + 1), 0);
     const desc = s.points.map(p => `${p.rmp?'↗':'—'}${p.amp>=0?'+':''}${p.amp}`).join(' ');
+    const unusedChip = used
+      ? ''
+      : `<span class="chip-unused" title="No sequence references this snippet">unused</span>`;
 
     tile.innerHTML = `
       <div class="tile-head">
         <span class="tile-title" title="${escapeHtml(snippetName(i))}">SNP_${i+1} · ${escapeHtml(snippetName(i))}</span>
+        ${unusedChip}
         <span class="tile-meta">${nBytes}B · ${totalTb || 0}tb</span>
       </div>
       <canvas></canvas>
@@ -1901,6 +1935,9 @@ function buildSnippetEditor(idx) {
   // displays the placeholder (the auto-generated default name).
   const toolbar = document.createElement('div');
   toolbar.style.cssText = 'display:flex; align-items:center; gap:8px; margin: 10px 0 6px;';
+  const editorUnusedChip = isSnippetUsed(idx)
+    ? ''
+    : `<span class="chip-unused" title="No sequence references this snippet">unused</span>`;
   toolbar.innerHTML = `
     <span class="meta" style="color: var(--snp);">Snippet ${idx+1}</span>
     <input type="text" class="name-input"
@@ -1908,6 +1945,7 @@ function buildSnippetEditor(idx) {
            value="${escapeHtml(snp.name || '')}"
            maxlength="80" spellcheck="false"
            title="Display name for this snippet (saved in the file header)">
+    ${editorUnusedChip}
     <span class="meta">${snp.points.length} PWL point(s) · ${snp.points.length} byte(s)</span>
     <div class="spacer" style="flex:1"></div>
     <div class="btn-row">
@@ -3127,6 +3165,15 @@ function snippetName(i) {
   const s = state.snippets[i];
   const n = s && s.name ? String(s.name).trim() : '';
   return n || `snippet_${i + 1}`;
+}
+// True if no sequence frame references this snippet (1-indexed, since
+// SNP_ID=0 is silence and SNP_ID=k+1 ↔ state.snippets[k]).
+function isSnippetUsed(i) {
+  const id = i + 1;
+  for (const seq of state.sequences) {
+    for (const fr of seq.frames) if (fr.snpId === id) return true;
+  }
+  return false;
 }
 function sequenceName(i) {
   const s = state.sequences[i];
