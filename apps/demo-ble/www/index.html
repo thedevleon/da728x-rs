@@ -41,7 +41,8 @@
     }
     h2 { margin: 0 0 .5rem; font-size: 1rem; color: var(--accent); }
     .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-    .row > * { flex: 1 1 auto; }
+    .row > * { flex: 0 0 auto; }
+    .row.fill > * { flex: 1 1 auto; }
     label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .25rem; }
     input, textarea, button, select {
       font: inherit;
@@ -52,7 +53,7 @@
       padding: .5rem .6rem;
     }
     input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-dim); }
-    textarea { width: 100%; min-height: 6rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    textarea { width: 100%; min-height: 8rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
     button {
       cursor: pointer;
       background: var(--accent-dim);
@@ -66,6 +67,13 @@
     button.secondary { background: transparent; color: var(--fg); border-color: var(--border); }
     button.danger { background: var(--danger); border-color: var(--danger); }
     button.success { background: var(--success); border-color: var(--success); }
+    button.seq-btn {
+      background: rgba(79,195,247,.12);
+      border-color: var(--accent-dim);
+      color: var(--accent);
+      min-width: 0;
+    }
+    button.seq-btn:hover { background: rgba(79,195,247,.22); }
     .badge {
       display: inline-block;
       padding: .15rem .45rem;
@@ -101,6 +109,11 @@
     .log-ok { color: var(--success); }
     .log-err { color: var(--danger); }
     .log-warn { color: #ffa726; }
+    .seq-grid { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+    .seq-grid button { flex: 1 1 8rem; }
+    #fileInput { display: none; }
+    .meta { font-size: .8rem; color: var(--muted); }
+    .meta strong { color: var(--fg); }
   </style>
 </head>
 <body>
@@ -130,33 +143,41 @@
     </section>
 
     <section>
-      <h2>Waveform Upload</h2>
-      <label for="hexInput">Waveform memory (hex, max 100 bytes)</label>
-      <textarea id="hexInput" placeholder="Paste 100 bytes as hex, e.g. 01 01 04 05 ..."></textarea>
-      <p class="hint">Generate this with the <a href="../../waveform-builder/waveform_builder.html" target="_blank">Waveform Builder</a> or paste a pre-built image.</p>
+      <h2>Waveform Configuration</h2>
+      <label for="configInput">Paste a waveform script or raw hex bytes</label>
+      <textarea id="configInput" placeholder="Paste script from Waveform Builder (WRITE DA728x ...) or raw hex bytes"></textarea>
+      <p class="hint">Accepted formats: Waveform Builder script (<code>WRITE DA728x 0x84 0x07</code>...) or raw hex bytes. Generate scripts with the <a href="../../waveform-builder/waveform_builder.html" target="_blank">Waveform Builder</a>.</p>
+
       <div class="row" style="margin-top:.5rem">
+        <button id="btnParse">Parse</button>
         <button id="btnUpload" disabled>Upload</button>
-        <button id="btnLoadExample" class="secondary">Load Example</button>
+        <button id="btnLoadFile" class="secondary">Load from File</button>
+        <input type="file" id="fileInput" accept=".txt">
         <button id="btnClear" class="secondary">Clear</button>
       </div>
+
+      <div id="metaInfo" class="meta" style="margin-top:.5rem"></div>
     </section>
 
     <section>
-      <h2>Playback</h2>
+      <h2>Sequences</h2>
+      <p class="hint">Click a button to play the corresponding sequence. Set loop count below.</p>
       <div class="grid two">
-        <div>
-          <label for="seqId">Sequence ID</label>
-          <input id="seqId" type="number" min="0" max="15" value="0">
-        </div>
         <div>
           <label for="loops">Loop count (device plays loops+1)</label>
           <input id="loops" type="number" min="0" max="255" value="0">
         </div>
       </div>
-      <div class="row" style="margin-top:.5rem">
-        <button id="btnPlay" disabled>Play</button>
-        <button id="btnEnable" class="success" disabled>Enable</button>
-        <button id="btnDisable" class="danger" disabled>Disable</button>
+      <div id="seqContainer" class="seq-grid">
+        <p class="hint">Parse a configuration to see sequence buttons.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Global Control</h2>
+      <div class="row">
+        <button id="btnEnable" class="success" disabled>Enable Output</button>
+        <button id="btnDisable" class="danger" disabled>Disable Output</button>
       </div>
     </section>
 
@@ -170,7 +191,7 @@
   </main>
 
   <script>
-    const SVC_UUID         = 'da728000-0000-1000-8000-00805f9b34fb';
+    const SVC_UUID              = 'da728000-0000-1000-8000-00805f9b34fb';
     const CHAR_WAVEFORM_DATA    = 'da728001-0000-1000-8000-00805f9b34fb';
     const CHAR_WAVEFORM_CONTROL = 'da728002-0000-1000-8000-00805f9b34fb';
     const CHAR_STATUS           = 'da728003-0000-1000-8000-00805f9b34fb';
@@ -186,12 +207,18 @@
     const STATUS_UPLOAD_COMPLETE = 0x04;
     const STATUS_ERROR           = 0x08;
 
+    const MEM_START = 0x84;
+    const MEM_END   = 0xE7;
+
     let device = null;
     let server = null;
     let service = null;
     let chWaveformData = null;
     let chWaveformControl = null;
     let chStatus = null;
+
+    let parsedImage = null;
+    let sequenceNames = [];
 
     const $ = (sel) => document.querySelector(sel);
     const setDisabled = (ids, v) => ids.forEach(id => $(id).disabled = v);
@@ -205,25 +232,140 @@
       $('#log').scrollTop = $('#log').scrollHeight;
     }
 
-    function parseHex(str) {
-      const cleaned = str.replace(/[^0-9a-fA-F]/g, '');
-      if (cleaned.length % 2 !== 0) throw new Error('Hex string has odd length');
-      const out = new Uint8Array(cleaned.length / 2);
-      for (let i = 0; i < out.length; i++) {
-        out[i] = parseInt(cleaned.substr(i * 2, 2), 16);
+    // ---------------------------------------------------------------------------
+    // Parsing
+    // ---------------------------------------------------------------------------
+
+    function parseScript(text) {
+      const lines = text.split(/\r?\n/);
+      const image = new Uint8Array(100);
+      let hasData = false;
+      let inSnippets = false;
+      let inSequences = false;
+      const snippets = [];
+      const sequences = [];
+
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+
+        if (line.startsWith('//')) {
+          const c = line.slice(2).trim();
+          if (c === 'SNIPPETS:') { inSnippets = true; inSequences = false; continue; }
+          if (c === 'SEQUENCES:') { inSnippets = false; inSequences = true; continue; }
+          if (c.startsWith('ACCELERATION_EN:') || c.startsWith('FREQ_WAVEFORM_TIMEBASE:')) {
+            inSnippets = false; inSequences = false;
+            continue;
+          }
+          const m = c.match(/^(\d+):\s*(.+)$/);
+          if (m) {
+            const idx = parseInt(m[1], 10);
+            const name = m[2].trim();
+            if (inSnippets) snippets[idx] = name;
+            if (inSequences) sequences[idx] = name;
+          }
+          continue;
+        }
+
+        const wr = line.match(/^WRITE\s+DA728x\s+(0x[0-9a-fA-F]+)\s+(0x[0-9a-fA-F]+)$/);
+        if (wr) {
+          const addr = parseInt(wr[1], 16);
+          const val  = parseInt(wr[2], 16);
+          if (addr >= MEM_START && addr <= MEM_END) {
+            image[addr - MEM_START] = val;
+            hasData = true;
+          }
+        }
       }
-      return out;
+
+      // Determine sequence count from image byte 1
+      const numSequences = hasData ? image[1] : 0;
+      const seqNames = [];
+      for (let i = 0; i < numSequences; i++) {
+        seqNames.push(sequences[i] || `sequence_${i}`);
+      }
+
+      return { image, hasData, seqNames, numSnippets: hasData ? image[0] : 0 };
     }
 
-    function statusName(v) {
-      switch (v) {
-        case STATUS_READY: return 'Ready';
-        case STATUS_UPLOADING: return 'Uploading';
-        case STATUS_UPLOAD_COMPLETE: return 'Upload Complete';
-        case STATUS_ERROR: return 'Error';
-        default: return `Unknown (0x${v.toString(16).padStart(2,'0')})`;
+    function parseRawHex(text) {
+      const cleaned = text.replace(/[^0-9a-fA-F]/g, '');
+      if (cleaned.length === 0) return null;
+      if (cleaned.length % 2 !== 0) throw new Error('Hex string has odd length');
+      const bytes = new Uint8Array(cleaned.length / 2);
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(cleaned.substr(i * 2, 2), 16);
+      }
+      const image = new Uint8Array(100);
+      image.set(bytes.slice(0, 100));
+      const numSequences = image[1];
+      const seqNames = [];
+      for (let i = 0; i < numSequences; i++) seqNames.push(`sequence_${i}`);
+      return { image, hasData: bytes.length > 0, seqNames, numSnippets: image[0] };
+    }
+
+    function parseConfig(text) {
+      // Waveform Builder scripts start with comment lines, so search any line
+      if (/^WRITE\s+DA728x\s+0x/im.test(text)) {
+        const result = parseScript(text);
+        if (result.hasData) return result;
+        // False positive: looked like a script but no valid WRITE lines found
+      }
+      return parseRawHex(text);
+    }
+
+    function renderSequences() {
+      const container = $('#seqContainer');
+      container.innerHTML = '';
+      if (!parsedImage || sequenceNames.length === 0) {
+        container.innerHTML = '<p class="hint">Parse a configuration to see sequence buttons.</p>';
+        return;
+      }
+      sequenceNames.forEach((name, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'seq-btn';
+        btn.textContent = `${idx}: ${name}`;
+        btn.disabled = !chWaveformControl;
+        btn.addEventListener('click', () => playSequence(idx));
+        container.appendChild(btn);
+      });
+    }
+
+    function updateMeta(info) {
+      const el = $('#metaInfo');
+      if (!info || !info.hasData) {
+        el.innerHTML = '';
+        return;
+      }
+      el.innerHTML = `<strong>Parsed:</strong> ${info.numSnippets} snippet(s), ${info.seqNames.length} sequence(s). Ready to upload.`;
+    }
+
+    function doParse() {
+      const text = $('#configInput').value;
+      if (!text.trim()) { log('Nothing to parse.', 'log-warn'); return; }
+      try {
+        const result = parseConfig(text);
+        if (!result || !result.hasData) {
+          log('No valid waveform data found.', 'log-warn');
+          parsedImage = null;
+          sequenceNames = [];
+          updateMeta(null);
+          renderSequences();
+          return;
+        }
+        parsedImage = result.image;
+        sequenceNames = result.seqNames;
+        updateMeta(result);
+        renderSequences();
+        log(`Parsed: ${result.numSnippets} snippet(s), ${result.seqNames.length} sequence(s).`, 'log-ok');
+      } catch (e) {
+        log('Parse error: ' + e.message, 'log-err');
       }
     }
+
+    // ---------------------------------------------------------------------------
+    // BLE
+    // ---------------------------------------------------------------------------
 
     async function connect() {
       try {
@@ -247,20 +389,16 @@
         $('#connState').textContent = 'Connected';
         $('#connState').classList.add('ok');
         setDisabled(['#btnConnect'], true);
-        setDisabled(['#btnDisconnect','#btnReadStatus','#btnUpload','#btnPlay','#btnEnable','#btnDisable'], false);
+        setDisabled(['#btnDisconnect','#btnReadStatus','#btnUpload','#btnEnable','#btnDisable'], false);
+        renderSequences();
       } catch (e) {
         log('Connect failed: ' + e.message, 'log-err');
       }
     }
 
     async function disconnect() {
-      try {
-        if (device && device.gatt.connected) {
-          await device.gatt.disconnect();
-        }
-      } catch (e) {
-        log('Disconnect error: ' + e.message, 'log-err');
-      }
+      try { if (device && device.gatt.connected) await device.gatt.disconnect(); }
+      catch (e) { log('Disconnect error: ' + e.message, 'log-err'); }
       onDisconnected();
     }
 
@@ -270,7 +408,8 @@
       $('#connState').textContent = 'Disconnected';
       $('#connState').classList.remove('ok');
       setDisabled(['#btnConnect'], false);
-      setDisabled(['#btnDisconnect','#btnReadStatus','#btnUpload','#btnPlay','#btnEnable','#btnDisable'], true);
+      setDisabled(['#btnDisconnect','#btnReadStatus','#btnUpload','#btnEnable','#btnDisable'], true);
+      renderSequences();
       log('Disconnected.', 'log-warn');
     }
 
@@ -279,7 +418,7 @@
         const val = await chStatus.readValue();
         const v = val.getUint8(0);
         const name = statusName(v);
-        $('#statusValue').textContent = `0x${v.toString(16).padStart(2,'0')} — ${name}`;
+        $('#statusValue').textContent = `0x${v.toString(16).padStart(2,'0')} \u2014 ${name}`;
         $('#statusValue').className = 'badge ' + (v === STATUS_ERROR ? 'err' : v === STATUS_UPLOAD_COMPLETE ? 'ok' : '');
         log(`Status: ${name} (0x${v.toString(16).padStart(2,'0')})`);
       } catch (e) {
@@ -289,11 +428,9 @@
 
     async function upload() {
       try {
-        const bytes = parseHex($('#hexInput').value);
-        if (bytes.length === 0) { log('Nothing to upload.', 'log-warn'); return; }
-        if (bytes.length > 100) { log('Image is >100 bytes, truncating to 100.', 'log-warn'); }
-        const image = bytes.slice(0, 100);
-        const len = image.length;
+        if (!parsedImage) { log('No parsed waveform image. Click Parse first.', 'log-warn'); return; }
+        const image = parsedImage;
+        const len = image.length; // always 100
 
         log(`Starting upload: ${len} bytes...`);
         await chWaveformControl.writeValueWithoutResponse(new Uint8Array([CMD_START_UPLOAD, len]));
@@ -319,12 +456,12 @@
       }
     }
 
-    async function play() {
+    async function playSequence(seq) {
       try {
-        const seq = parseInt($('#seqId').value, 10) & 0xFF;
         const loops = parseInt($('#loops').value, 10) & 0xFF;
         await chWaveformControl.writeValueWithoutResponse(new Uint8Array([CMD_PLAY, seq, loops]));
-        log(`Play sequence ${seq}, loops=${loops} (plays ${loops+1} times)`);
+        const name = sequenceNames[seq] || `sequence_${seq}`;
+        log(`Play "${name}" (seq=${seq}, loops=${loops}, plays ${loops+1}x)`);
       } catch (e) {
         log('Play failed: ' + e.message, 'log-err');
       }
@@ -348,33 +485,55 @@
       }
     }
 
-    function loadExample() {
-      // Minimal valid waveform memory image:
-      // 1 snippet, 1 sequence
-      // End pointer layout depends on the Rust builder, so this is a placeholder.
-      // Users should replace this with real output from the waveform builder.
-      const example = new Uint8Array([
-        0x01, // 1 snippet
-        0x01, // 1 sequence
-        // Example snippet (single PWL point: RMP=0, TIME=0, AMP=15 => 0x0F)
-        0x0F,
-        // Example sequence frame (GAIN=0, TIMEBASE=0, SNIPPET_ID=1 => 0x01)
-        0x01,
-      ]);
-      $('#hexInput').value = fmtHex(example);
-      log('Loaded minimal example. Replace with a real image from the Waveform Builder for actual playback.', 'log-warn');
+    function statusName(v) {
+      switch (v) {
+        case STATUS_READY: return 'Ready';
+        case STATUS_UPLOADING: return 'Uploading';
+        case STATUS_UPLOAD_COMPLETE: return 'Upload Complete';
+        case STATUS_ERROR: return 'Error';
+        default: return `Unknown (0x${v.toString(16).padStart(2,'0')})`;
+      }
     }
+
+    function loadFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        $('#configInput').value = e.target.result;
+        log(`Loaded ${file.name}. Parsing...`);
+        doParse();
+      };
+      reader.onerror = () => log('Failed to read file.', 'log-err');
+      reader.readAsText(file);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Events
+    // ---------------------------------------------------------------------------
 
     $('#btnConnect').addEventListener('click', connect);
     $('#btnDisconnect').addEventListener('click', disconnect);
     $('#btnReadStatus').addEventListener('click', readStatus);
     $('#btnUpload').addEventListener('click', upload);
-    $('#btnPlay').addEventListener('click', play);
     $('#btnEnable').addEventListener('click', enable);
     $('#btnDisable').addEventListener('click', disable);
-    $('#btnLoadExample').addEventListener('click', loadExample);
-    $('#btnClear').addEventListener('click', () => $('#hexInput').value = '');
+    $('#btnParse').addEventListener('click', doParse);
+    $('#btnClear').addEventListener('click', () => {
+      $('#configInput').value = '';
+      parsedImage = null;
+      sequenceNames = [];
+      updateMeta(null);
+      renderSequences();
+    });
     $('#btnClearLog').addEventListener('click', () => $('#log').innerHTML = '');
+    $('#btnLoadFile').addEventListener('click', () => $('#fileInput').click());
+    $('#fileInput').addEventListener('change', (e) => {
+      if (e.target.files.length) loadFile(e.target.files[0]);
+      e.target.value = '';
+    });
+
+    $('#configInput').addEventListener('paste', () => {
+      setTimeout(doParse, 0);
+    });
 
     log('Ready. Click Connect to pair with the DA728x Haptics device.');
   </script>
