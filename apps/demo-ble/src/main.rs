@@ -1,10 +1,10 @@
 #![no_std]
 #![no_main]
 
-use defmt::*;
 use defmt::unwrap;
+use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 use embassy_nrf::config::{self, ClockSpeed, HfclkSource, LfclkSource};
 use embassy_nrf::cracen::{self};
 use embassy_nrf::mode::Blocking;
@@ -19,8 +19,10 @@ use static_cell::{ConstStaticCell, StaticCell};
 use trouble_host::prelude::*;
 use {defmt_rtt as _, panic_probe as _};
 
+use da728x::config::ActuatorConfig;
+use da728x::config::ActuatorType;
 use da728x::waveform::WaveformMemory;
-use da728x::{Variant, DA728x};
+use da728x::{DA728x, Variant};
 use da728x_examples_common as common;
 
 // =============================================================================
@@ -167,7 +169,9 @@ async fn main(spawner: Spawner) {
         skip_wait_lfclk_started: false,
     };
     static MPSL: StaticCell<MultiprotocolServiceLayer> = StaticCell::new();
-    let mpsl = MPSL.init(unwrap!(mpsl::MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg)));
+    let mpsl = MPSL.init(unwrap!(mpsl::MultiprotocolServiceLayer::new(
+        mpsl_p, Irqs, lfclk_cfg
+    )));
     unwrap!(spawner.spawn(mpsl_task(&*mpsl)));
 
     // --- SDC ---
@@ -209,8 +213,19 @@ async fn main(spawner: Spawner) {
 
     info!("Initializing DA7280...");
     let mut haptics = unwrap!(DA728x::new(twi, 0x4A, Variant::DA7280).await);
-    let actuator_config = common::config::sparkfun_lra_config();
+    let actuator_config = ActuatorConfig {
+        actuator_type: ActuatorType::LRA,
+        nominal_max_mV: 1_240,
+        absolute_max_mV: 1_240,
+        max_current_mA: 80,
+        impedance_mOhm: 21_000,
+        inductance_uH: 50,
+        frequency_Hz: 240,
+        pid_Kp_Ki: None,
+    };
+
     let device_config = common::config::rtwm_frequency_track();
+
     unwrap!(haptics.configure(actuator_config, device_config).await);
     unwrap!(haptics.enable().await);
     info!("DA7280 configured and enabled in RTWM mode.");
@@ -228,10 +243,12 @@ async fn main(spawner: Spawner) {
         ..
     } = stack.build();
 
-    let server = unwrap!(HapticsServer::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-        name: "DA728x Haptics",
-        appearance: &appearance::UNKNOWN,
-    })));
+    let server = unwrap!(HapticsServer::new_with_config(GapConfig::Peripheral(
+        PeripheralConfig {
+            name: "DA728x Haptics",
+            appearance: &appearance::UNKNOWN,
+        }
+    )));
 
     // Run BLE host task concurrently with application logic
     let _ = select(ble_task(runner), async {
@@ -350,7 +367,8 @@ async fn gatt_events_task(
                                     && offset + chunk.len() <= 100
                                     && offset + chunk.len() <= state.expected_len
                                 {
-                                    state.buffer[offset..offset + chunk.len()].copy_from_slice(chunk);
+                                    state.buffer[offset..offset + chunk.len()]
+                                        .copy_from_slice(chunk);
                                     state.received_len += chunk.len();
                                     info!(
                                         "[gatt] Received {} bytes at offset {} ({}/{})",
@@ -398,7 +416,9 @@ async fn gatt_events_task(
                                         let mut status = STATUS_UPLOAD_COMPLETE;
                                         {
                                             let state = upload_state.lock().await;
-                                            if state.active && state.received_len >= state.expected_len {
+                                            if state.active
+                                                && state.received_len >= state.expected_len
+                                            {
                                                 let expected_len = state.expected_len;
                                                 let num_snippets = state.buffer[0];
                                                 let num_sequences = state.buffer[1];
@@ -412,7 +432,10 @@ async fn gatt_events_task(
                                                     num_snippets,
                                                     num_sequences,
                                                 );
-                                                if let Err(e) = driver.upload_waveform_memory(&memory, false).await {
+                                                if let Err(e) = driver
+                                                    .upload_waveform_memory(&memory, false)
+                                                    .await
+                                                {
                                                     warn!("[gatt] Upload failed: {:?}", e);
                                                     status = STATUS_ERROR;
                                                 } else {
