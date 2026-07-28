@@ -224,7 +224,11 @@ async fn main(spawner: Spawner) {
         pid_Kp_Ki: None,
     };
 
+    // RTWM Mode
     let device_config = common::config::rtwm_frequency_track();
+
+    // Wideband Mode
+    // let device_config = common::config::rtwm_wideband();
 
     unwrap!(haptics.configure(actuator_config, device_config).await);
     unwrap!(haptics.enable().await);
