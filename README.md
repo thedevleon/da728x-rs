@@ -4,7 +4,7 @@
 [![API](https://docs.rs/da728x/badge.svg)](https://docs.rs/da728x)
 
 
-An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA7282 from Renesas.
+A `no_std` Rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA7282 from Renesas. Async my default, but a synchronous/blocking API is available via the optional `blocking` feature.
 
 ## Supported ICs
 - DA7280
@@ -28,6 +28,7 @@ An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/
 
 ## Features
 - `debug` - Enable debug logging with the `defmt` crate
+- `blocking` - Build a synchronous/blocking API instead of the default async API. Make sure default features are disabled.
 
 
 # Basic Usage

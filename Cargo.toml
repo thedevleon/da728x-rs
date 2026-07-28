@@ -17,10 +17,14 @@ exclude = [
 ]
 
 [features]
+default = ["async"]
+async = ["dep:embedded-hal-async"]
+blocking = ["maybe-async/is_sync"]
 debug = ["dep:defmt"]
 
 [dependencies]
-embedded-hal-async = "1.0.0"
 embedded-hal = "1.0.0"
+embedded-hal-async = { version = "1.0.0", optional = true }
 bitfield-struct = "0.12.1"
 defmt = { version = "1.0", optional = true }
+maybe-async = "0.2"

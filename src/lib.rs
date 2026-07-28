@@ -8,8 +8,14 @@ pub mod errors;
 pub mod registers;
 pub mod waveform;
 
-use embedded_hal_async::i2c::Error as I2cError;
+use maybe_async::maybe_async;
+
+#[cfg(not(feature = "blocking"))]
 use embedded_hal_async::i2c::I2c;
+#[cfg(feature = "blocking")]
+use embedded_hal::i2c::I2c;
+
+use embedded_hal::i2c::Error as I2cError;
 
 #[cfg(feature = "debug")]
 use defmt::{debug, info};
@@ -53,14 +59,12 @@ pub struct DA728x<I2C> {
     device_config: Option<DeviceConfig>,
 }
 
+#[maybe_async]
 impl<I2C> DA728x<I2C>
 where
     I2C: I2c,
 {
-    pub async fn new(i2c: I2C, address: u8, variant: Variant) -> Result<Self, Error>
-    where
-        I2C: I2c,
-    {
+    pub async fn new(i2c: I2C, address: u8, variant: Variant) -> Result<Self, Error> {
         let mut da728x = DA728x {
             i2c,
             address,
