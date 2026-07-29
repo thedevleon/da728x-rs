@@ -4,7 +4,7 @@
 [![API](https://docs.rs/da728x/badge.svg)](https://docs.rs/da728x)
 
 
-A `no_std` Rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA7282 from Renesas. Async my default, but a synchronous/blocking API is available via the optional `blocking` feature.
+An async (and optionally blocking) `no_std` Rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA7282 from Renesas.
 
 ## Supported ICs
 - DA7280
@@ -120,16 +120,116 @@ pub const DA7280_WAVEFORM_MEMORY: WaveformMemory = WaveformMemory::from_bytes(
 );
 
 // main
-// let mut haptics = DA728x::new(...);
+// let mut haptics = DA728x::new(...);                   hy
 // haptics.configure(...);
-haptics.upload_waveform_memory(&DA7280_WAVEFORM_MEMORY, true).await?; // lock after writing
-haptics.enable().await?;
+
+// set timebase for waveform memory
+haptics
+    .set_timebase(WaveformMemoryTimebase::TIMEBASE_136_544_2176_4352)
+    .await?;
+
+// upload waveform memory and lock after writing
+haptics.upload_waveform_memory(&DA7280_WAVEFORM_MEMORY, true).await?;
+
+haptics.enable().await?; // enable
 
 haptics.play_sequence(n, 0).await?; // play any sequence from memory
 ```
 
 ## Builder Pattern
-See simple_dro.rs and waveform_effects.rs.
+```rust
+// Snippet 1: Click - quick rise, smooth fall
+let click_snippet = SnippetBuilder::new()
+    .ramp(1, 15).unwrap()  // Fast rise to 100%
+    .ramp(2, 0).unwrap()   // Smooth fall to 0%
+    .build()
+    .unwrap();
+
+// Snippet 2: Bump - gradual rise, hold, gradual fall
+let bump_snippet = SnippetBuilder::new()
+    .ramp(2, 15).unwrap()  // Rise to 100%
+    .step(2, 15).unwrap()  // Hold for 2 timebases
+    .ramp(2, 0).unwrap()   // Fall to 0%
+    .build()
+    .unwrap();
+
+// Snippet 3: Buzz - quick rise, sustain, quick fall
+let buzz_snippet = SnippetBuilder::new()
+    .ramp(1, 15).unwrap()  // Quick rise to 100%
+    .step(6, 15).unwrap()  // Sustain for 6 timebases
+    .ramp(1, 0).unwrap()   // Quick fall
+    .build()
+    .unwrap();
+
+// Sequence 0: Single click
+let click_frame = FrameBuilder::new(1).unwrap()
+    .gain(Gain::Full)
+    .timebase(Timebase::Ms21_76)
+    .build()
+    .unwrap();
+let click_seq = SequenceBuilder::new()
+    .add_frame(click_frame).unwrap()
+    .build()
+    .unwrap();
+
+// Sequence 1: Double click (click + silence + click)
+let frame1 = FrameBuilder::new(1).unwrap()
+    .gain(Gain::Full)
+    .timebase(Timebase::Ms21_76)
+    .build()
+    .unwrap();
+// Use built-in silence snippet (ID 0) for pause between clicks
+let silence = FrameBuilder::silence()
+    .timebase(Timebase::Ms43_52)  // ~87ms pause
+    .build()
+    .unwrap();
+let frame2 = FrameBuilder::new(1).unwrap()
+    .gain(Gain::Full)
+    .timebase(Timebase::Ms21_76)
+    .build()
+    .unwrap();
+let double_click_seq = SequenceBuilder::new()
+    .add_frame(frame1).unwrap()
+    .add_frame(silence).unwrap()
+    .add_frame(frame2).unwrap()
+    .build()
+    .unwrap();
+
+// Sequence 2: Buzz with loop for sustained vibration
+let buzz_frame = FrameBuilder::new(3).unwrap()
+    .gain(Gain::Full)
+    .timebase(Timebase::Ms21_76)
+    .loop_count(3).unwrap()  // Play 4 times total
+    .build()
+    .unwrap();
+let buzz_seq = SequenceBuilder::new()
+    .add_frame(buzz_frame).unwrap()
+    .build()
+    .unwrap();
+
+// Build the complete waveform memory
+let memory = WaveformMemoryBuilder::new(false)  // acceleration disabled
+    .add_snippet(click_snippet).unwrap()
+    .add_snippet(bump_snippet).unwrap()
+    .add_snippet(buzz_snippet).unwrap()
+    .add_sequence(click_seq).unwrap()
+    .add_sequence(double_click_seq).unwrap()
+    .add_sequence(buzz_seq).unwrap()
+    .build()
+    .unwrap();
+
+// set timebase for waveform memory
+haptics
+    .set_timebase(WaveformMemoryTimebase::TIMEBASE_136_544_2176_4352)
+    .await?;
+
+// upload waveform memory and lock after writing
+haptics.upload_waveform_memory(&DA7280_WAVEFORM_MEMORY, true).await?;
+
+haptics.enable().await?; // enable
+
+haptics.play_sequence(n, 0).await?; // play any sequence from memory
+```
 
 
 # Devkits
