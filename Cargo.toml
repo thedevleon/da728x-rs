@@ -1,8 +1,8 @@
 [package]
 name = "da728x"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-description = "An async and no_std rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA72782 from Renesas."
+description = "An async (and optionally blocking) no_std rust library for the wide-bandwidth haptic driver IC DA7280/DA7281/DA72782 from Renesas."
 authors = ["thedevleon"]
 license = "MIT"
 
