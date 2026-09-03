@@ -51,6 +51,43 @@ pub enum Variant {
     DA7282 = 0xDA,
 }
 
+pub enum TriggerMode {
+    SingleSequence,
+    MultiSequence,
+}
+
+pub enum TriggerPolarity {
+    Rising,
+    Falling,
+    Both,
+}
+
+pub struct TriggerConfig {
+    pub pin_index: u8,
+    pub sequence_id: u8,
+    pub sequence_id_alt: Option<u8>,
+    pub polarity: TriggerPolarity,
+    pub mode: TriggerMode,
+}
+
+impl Variant {
+    pub const fn from_index(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Variant::DA7280),
+            1 => Some(Variant::DA7281),
+            2 => Some(Variant::DA7282),
+            _ => None,
+        }
+    }
+
+    pub const fn gpi_count(&self) -> u8 {
+        match self {
+            Variant::DA7280 | Variant::DA7282 => 3,
+            Variant::DA7281 => 1,
+        }
+    }
+}
+
 pub struct DA728x<I2C> {
     i2c: I2C,
     address: u8,
@@ -102,6 +139,42 @@ where
         }
 
         Ok(da728x)
+    }
+
+    pub async fn configure_etwm_trigger(
+        &mut self,
+        config: TriggerConfig,
+    ) -> Result<(), Error> {
+        if config.pin_index >= self.variant.gpi_count() {
+            return Err(Error::InvalidValue);
+        }
+
+        if config.sequence_id > 15 {
+            return Err(Error::InvalidValue);
+        }
+
+        if let Some(alt) = config.sequence_id_alt {
+            if alt > 15 {
+                return Err(Error::InvalidValue);
+            }
+        }
+
+        let polarity = match config.polarity {
+            TriggerPolarity::Rising => 0x00,
+            TriggerPolarity::Falling => 0x01,
+            TriggerPolarity::Both => 0x02,
+        };
+
+        let mode = match config.mode {
+            TriggerMode::SingleSequence => 0,
+            TriggerMode::MultiSequence => 1,
+        };
+
+        let seq_id = config.sequence_id.min(15);
+        let value = (polarity & 0x03) | ((mode as u8) << 2) | ((seq_id & 0x0F) << 3);
+        let gpi_reg = (Register::GPI_0_CTL as u8) + config.pin_index;
+
+        self.write_raw_register(gpi_reg, value).await
     }
 
     /// Configure the device with the supplied ActuatorConfig and DeviceConfig.
@@ -522,6 +595,13 @@ where
     async fn write_register(&mut self, register: Register, data: u8) -> Result<(), Error> {
         self.i2c
             .write(self.address, &[register as u8, data])
+            .await
+            .map_err(|e| Error::I2c(e.kind()))
+    }
+
+    async fn write_raw_register(&mut self, register: u8, data: u8) -> Result<(), Error> {
+        self.i2c
+            .write(self.address, &[register, data])
             .await
             .map_err(|e| Error::I2c(e.kind()))
     }
