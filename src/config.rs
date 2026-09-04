@@ -20,10 +20,33 @@ pub enum ActuatorType {
     ERM = 1,
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+pub enum TriggerMode {
+    SingleSequence = 0,
+    MultiSequence = 1,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum TriggerPolarity {
+    Rising = 0,
+    Falling = 1,
+    Both = 2,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TriggerConfig {
+    pub sequence_id: u8,
+    pub polarity: TriggerPolarity,
+    pub mode: TriggerMode,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct DeviceConfig {
     pub operation_mode: OperationMode,
     pub driving_mode: DrivingMode,
+    pub gpi_triggers: [Option<TriggerConfig>; 3],
     pub acceleration: bool,
     pub rapid_stop: bool,
 }
