@@ -10,23 +10,23 @@ pub mod waveform;
 
 use maybe_async::maybe_async;
 
-#[cfg(not(feature = "blocking"))]
-use embedded_hal_async::i2c::I2c;
 #[cfg(feature = "blocking")]
 use embedded_hal::i2c::I2c;
+#[cfg(not(feature = "blocking"))]
+use embedded_hal_async::i2c::I2c;
 
 use embedded_hal::i2c::Error as I2cError;
 
 #[cfg(feature = "debug")]
 use defmt::{debug, info};
 
-use config::{ActuatorConfig, DeviceConfig, DrivingMode, OperationMode};
+use config::{ActuatorConfig, DeviceConfig, DrivingMode, OperationMode, TriggerConfig};
 use errors::Error;
 use registers::Register;
 use registers::{
     ACTUATOR1, ACTUATOR2, ACTUATOR3, CALIB_V2I_H, CALIB_V2I_L, CHIP_REV, FRQ_LRA_PER_H,
     FRQ_LRA_PER_L, FRQ_PHASE_H, FRQ_PHASE_L, IRQ_EVENT_SEQ_DIAG, IRQ_EVENT_WARNING_DIAG,
-    IRQ_EVENT1, IRQ_STATUS1, TOP_CFG1, TOP_CTL1,
+    IRQ_EVENT1, IRQ_STATUS1, TOP_CFG1, TOP_CTL1, GPI_0_CTL, GPI_1_CTL, GPI_2_CTL,
 };
 
 use crate::registers::MEM_CTL2;
@@ -45,10 +45,11 @@ use crate::registers::TRIM4;
 use crate::waveform::WaveformMemory;
 use crate::waveform::WaveformMemoryTimebase;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Variant {
-    DA7280 = 0xBA,
-    DA7281 = 0xCA,
-    DA7282 = 0xDA,
+    DA7280,
+    DA7281,
+    DA7282,
 }
 
 pub struct DA728x<I2C> {
@@ -114,11 +115,29 @@ where
         actuator_config: ActuatorConfig,
         device_config: DeviceConfig,
     ) -> Result<(), Error> {
+        
         // Check for invalid combinations
         if device_config.driving_mode != DrivingMode::FREQUENCY_TRACK
             && (device_config.acceleration || device_config.rapid_stop)
         {
             return Err(Error::WrongMode);
+        }
+        if device_config.operation_mode == OperationMode::ETWM_MODE {
+            // if none of the trigger configurations are provided, return an error
+            if device_config.gpi_triggers.iter().all(|x| x.is_none()) {
+                return Err(Error::MissingTriggerConfigInEtwmMode);
+            }
+            // if more than one trigger config is provided on the DA7281
+            else if self.variant == Variant::DA7281
+                && device_config
+                    .gpi_triggers
+                    .iter()
+                    .filter(|x| x.is_some())
+                    .count()
+                    > 1
+            {
+                return Err(Error::NotSupported);
+            }
         }
 
         // Check ranges of values before we set any registers
@@ -289,7 +308,7 @@ where
 
         // Default resonant frequency
         let frequency_converted =
-            (1_000_000_000 as u64 * 100 / (actuator_config.frequency_Hz as u64 * 133332)) as u16;
+            (1_000_000_000 * 100 / (actuator_config.frequency_Hz as u64 * 133332)) as u16;
         let frequency_converted_h: u8 = ((frequency_converted >> 7) & 0xFF) as u8;
         let frequency_converted_l: u8 = (frequency_converted & 0x7F) as u8;
         let frq_lra_per_h = FRQ_LRA_PER_H::from(frequency_converted_h);
@@ -344,6 +363,43 @@ where
                 .await?;
             self.write_register(Register::TOP_CFG4, top_cfg4.into())
                 .await?;
+        }
+
+        // ETWM Mode GPI configuration
+        if device_config.operation_mode == OperationMode::ETWM_MODE { 
+            // iterate through the device_config.gpi_triggers
+            for (i, gpi_trigger) in device_config.gpi_triggers.iter().enumerate() {
+                if let Some(trigger) = gpi_trigger {
+                    // Configure the corresponding GPI register based on the trigger
+                    match i {
+                        0 => {
+                            let gpi0_ctl = GPI_0_CTL::new()
+                                .with_GPI0_POLARITY(trigger.polarity as u8)
+                                .with_GPI0_MODE(true)
+                                .with_GPI0_SEQUENCE_ID(trigger.sequence_id);
+                            self.write_register(Register::GPI_0_CTL, gpi0_ctl.into())
+                                .await?;
+                        }
+                        1 => {
+                            let gpi1_ctl = GPI_1_CTL::new()
+                                .with_GPI1_POLARITY(trigger.polarity as u8)
+                                .with_GPI1_MODE(true)
+                                .with_GPI1_SEQUENCE_ID(trigger.sequence_id);
+                            self.write_register(Register::GPI_1_CTL, gpi1_ctl.into())
+                                .await?;
+                        }
+                        2 => {
+                            let gpi2_ctl = GPI_2_CTL::new()
+                                .with_GPI2_POLARITY(trigger.polarity as u8)
+                                .with_GPI2_MODE(true)
+                                .with_GPI2_SEQUENCE_ID(trigger.sequence_id);
+                            self.write_register(Register::GPI_2_CTL, gpi2_ctl.into())
+                                .await?;
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
 
         self.actuator_config = Some(actuator_config);
@@ -401,7 +457,7 @@ where
         }
 
         let frequency_converted =
-            (1_000_000_000 as u64 * 100 / (frequency_hz as u64 * 133332)) as u16;
+            (1_000_000_000 * 100 / (frequency_hz as u64 * 133332)) as u16;
         let frequency_converted_h: u8 = ((frequency_converted >> 7) & 0xFF) as u8;
         let frequency_converted_l: u8 = (frequency_converted & 0x7F) as u8;
         let frq_lra_per_h = FRQ_LRA_PER_H::from(frequency_converted_h);
@@ -503,7 +559,7 @@ where
             return Err(Error::WrongMode);
         }
 
-        // TODO
+        todo!("Set custom drive waveform is not yet implemented");
 
         Ok(())
     }
@@ -652,7 +708,7 @@ where
 
     /// Start playback of the selected sequence.
     ///
-    /// The device must be in RTWM_MODE and enabled for this to work.
+    /// The device must be in RTWM_MODE or ETWM_MODE and enabled for this to work.
     pub async fn start_sequence(&mut self) -> Result<(), Error> {
         let mut top_ctl1 = TOP_CTL1::from(self.read_register(Register::TOP_CTL1).await?);
         top_ctl1 = top_ctl1.with_SEQ_START(true);

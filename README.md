@@ -20,10 +20,10 @@ An async (and optionally blocking) `no_std` Rust library for the wide-bandwidth 
 - Driving an LRA in frequency track, wideband or custom waveform mode
 - DRO mode
 - Uploading into the waveform memory and RTWM_MODE
+- GPI configuration and ETWM_MODE
 
 ## What's missing
 - Testing of PWM_MODE
-- GPI configuration and ETWM_MODE
 - Uploading a script (list of registers and values as exported by GUI)
 
 ## Features

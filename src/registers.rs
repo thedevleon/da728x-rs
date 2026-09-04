@@ -313,14 +313,38 @@ pub struct SEQ_CTL2 {
     pub PS_SEQ_LOOP: u8,
 }
 
-/// GPI Control register (0x29, 0x2A, 0x2B)
+/// GPI0 Control register (0x29)
 #[bitfield(u8)]
-pub struct GPI_CTL {
+pub struct GPI_0_CTL {
     #[bits(2)]
-    pub POLARITY: u8,
-    pub MODE: bool,
+    pub GPI0_POLARITY: u8,
+    pub GPI0_MODE: bool,
     #[bits(4)]
-    pub SEQUENCE_ID: u8,
+    pub GPI0_SEQUENCE_ID: u8,
+    #[bits(1)]
+    __: u8,
+}
+
+/// GPI1 Control register (0x2A)
+#[bitfield(u8)]
+pub struct GPI_1_CTL {
+    #[bits(2)]
+    pub GPI1_POLARITY: u8,
+    pub GPI1_MODE: bool,
+    #[bits(4)]
+    pub GPI1_SEQUENCE_ID: u8,
+    #[bits(1)]
+    __: u8,
+}
+
+/// GPI2 Control register (0x2B)
+#[bitfield(u8)]
+pub struct GPI_2_CTL {
+    #[bits(2)]
+    pub GPI2_POLARITY: u8,
+    pub GPI2_MODE: bool,
+    #[bits(4)]
+    pub GPI2_SEQUENCE_ID: u8,
     #[bits(1)]
     __: u8,
 }
