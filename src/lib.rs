@@ -582,13 +582,6 @@ where
             .map_err(|e| Error::I2c(e.kind()))
     }
 
-    async fn write_raw_register(&mut self, register: u8, data: u8) -> Result<(), Error> {
-        self.i2c
-            .write(self.address, &[register, data])
-            .await
-            .map_err(|e| Error::I2c(e.kind()))
-    }
-
     /// Write multiple bytes to consecutive memory addresses starting at SNP_MEM_0.
     ///
     /// This is used for uploading waveform memory data.
