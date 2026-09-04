@@ -19,8 +19,8 @@ An async (and optionally blocking) `no_std` Rust library for the wide-bandwidth 
 - Reading and clearing system events and diagnostics
 - Driving an LRA in frequency track, wideband or custom waveform mode
 - DRO mode
-- GPI configuration and ETWM_MODE
 - Uploading into the waveform memory and RTWM_MODE
+- GPI configuration and ETWM_MODE
 
 ## What's missing
 - Testing of PWM_MODE
