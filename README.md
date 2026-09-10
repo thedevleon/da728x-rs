@@ -62,6 +62,7 @@ For simple patterns and basic use, we can directly write to a register in DRO mo
     let device_config = DeviceConfig {
         operation_mode: OperationMode::DRO_MODE,
         driving_mode: DrivingMode::FREQUENCY_TRACK,
+        gpi_triggers: [None, None, None],
         acceleration: false,
         rapid_stop: false,
     };
